@@ -1,0 +1,62 @@
+# Configuration file for Synapse.
+#
+# This is a YAML file: see [1] for a quick introduction. Note in particular
+# that *indentation is important*: all the elements of a list or dictionary
+# should have the same indentation.
+#
+# [1] https://docs.ansible.com/ansible/latest/reference_appendices/YAMLSyntax.html
+#
+# For more information on how to configure Synapse, including a complete accounting of
+# each option, go to docs/usage/configuration/config_documentation.md or
+# https://element-hq.github.io/synapse/latest/usage/configuration/config_documentation.html
+server_name: "localhost"
+pid_file: homeserver.pid
+listeners:
+  - port: 8008
+    tls: false
+    type: http
+    x_forwarded: true
+    bind_addresses: ["::1", "127.0.0.1"]
+    resources:
+      - names: [client, federation]
+        compress: false
+database:
+  name: sqlite3
+  args:
+    database: homeserver.db
+log_config: "./localhost.log.config"
+media_store_path: ./media_store
+# registration_shared_secret: "..."
+report_stats: false
+macaroon_secret_key: "..."
+form_secret: "..."
+signing_key_path: "<PATH_TO_SIGNING_KEY>"
+trusted_key_servers:
+  - server_name: "matrix.org"
+suppress_key_server_warning: true
+registration_requires_token: false
+enable_registration: false
+# enable_registration_without_verification: true
+password_config:
+  enabled: true
+password_providers:
+  - module: "rest_auth_provider.RestAuthProvider"
+    config:
+      endpoint: "http://example.com"
+      regLower: false
+      setNameOnRegister: true
+      setNameOnLogin: true
+      updateThreepid: false
+      replaceThreepid: false
+      policy:
+        registration:
+          username:
+            enforceLowercase: true
+        login:
+          profile:
+            name: false
+        all:
+          threepid:
+            update: false
+            replace: false
+# vim:ft=yaml
