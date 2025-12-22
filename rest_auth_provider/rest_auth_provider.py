@@ -28,6 +28,7 @@ from synapse.types import UserID
 
 logger = logging.getLogger(__name__)
 
+logger.warning("USING REST AUTH PROVIDER FROM: %s", __file__)
 
 class RestAuthProvider(object):
 

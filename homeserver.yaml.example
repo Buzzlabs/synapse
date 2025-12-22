@@ -40,7 +40,7 @@ enable_registration: false
 password_config:
   enabled: true
 password_providers:
-  - module: "rest_auth_provider.RestAuthProvider"
+  - module: rest_auth_provider.rest_auth_provider.RestAuthProvider
     config:
       endpoint: "http://example.com"
       regLower: false
