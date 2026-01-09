@@ -1,0 +1,93 @@
+# Discover Rooms Module for Matrix Synapse
+
+This module implements a custom discovery endpoint for Matrix Synapse that
+allows authenticated users to retrieve a list of available rooms, along with
+basic metadata such as name, member count, access type, and price.
+
+It is intended to support “discover / explore rooms” experiences in clients,
+without exposing full admin APIs directly to the frontend.
+
+It allows Synapse to:
+- expose a controlled HTTP endpoint for listing rooms
+- return room metadata (name, member count)
+- associate rooms with custom access types (free / paid)
+- attach pricing information for paid rooms
+- restrict access to authenticated Matrix users only
+
+---
+
+## How it works
+
+1. A client sends an HTTP request to the discover rooms endpoint
+2. Synapse authenticates the requester using the standard Matrix access token
+3. The module:
+    - resolves the configured admin user
+    - fetches all rooms the admin user is joined to
+    - collects room state (name) and member count
+    - enriches each room with static configuration (type and price)
+4. The module returns a JSON list of rooms to the client
+
+Room access type and pricing are currently defined statically inside the module for development and testing purposes:
+
+ROOM_CONFIG = {
+  "!gkOveurKVZZOeNOYDN:localhost": {
+    "type": "free",
+    "price": 0,
+  },
+  "!rBuRzPVGpFsVohvUEK:localhost": {
+    "type": "paid",
+    "price": 1990,
+  },
+}
+
+In a production setup, this information would typically be provided by an external service (for example, a billing or catalog service) responsible for defining:
+- whether a room is free or paid
+- pricing and access rules
+- whether the room should be visible to users
+The final isVisible flag exposed by this module is expected to be derived from a cross-check between:
+- the list of rooms joined by the configured admin user (source of truth for existing rooms), and
+the metadata returned by the external service (source of truth for business rules and visibility).
+This allows room existence and membership to remain fully managed by Synapse, while higher-level access control and discovery logic is delegated to an external system.
+
+## HTTP Endpoint
+
+Path: /_matrix/admin/rooms
+Method: GET
+Authentication: Required (Matrix access token)
+
+If the request succeeds, the endpoint returns a JSON array:
+[
+  {
+    "room_id": "!roomid1:localhost",
+    "name": "Sala Grátis",
+    "member_count": 42,
+    "type": "free",
+    "price": 0,
+    "isVisible": true
+  },
+  {
+    "room_id": "!roomid2:localhost",
+    "name": "Sala Paga",
+    "member_count": 12,
+    "type": "paid",
+    "price": 1990,
+    "isVisible": true
+  }
+]
+
+If an unexpected error occurs:
+
+{
+  "error": "internal"
+}
+
+## Configuration
+
+This module requires the following configuration keys in the Synapse module
+configuration:
+
+modules:
+  - module: modules.discover_rooms.module.DiscoverRoomsModule
+    config:
+      admin_user_id: "@admin:localhost"  
+
