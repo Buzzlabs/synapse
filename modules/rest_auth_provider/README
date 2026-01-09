@@ -1,0 +1,98 @@
+# REST Auth Provider for Matrix Synapse
+
+This module implements a custom password authentication provider for
+Matrix Synapse using an external REST backend.
+
+It allows Synapse to:
+- authenticate users against an external service
+- automatically create users on first successful login
+- optionally sync profile data (display name, 3PIDs)
+
+This is **not a registration endpoint**.  
+User creation happens implicitly during login if the user does not exist.
+
+---
+
+## How it works
+
+1. Synapse receives a login request
+2. Synapse calls `check_password` on this provider
+3. The provider:
+   - sends credentials to an external REST endpoint
+   - validates the response
+   - creates the Matrix user if it does not exist
+   - updates profile data according to policy
+4. If authentication succeeds, Synapse completes the login flow
+
+---
+
+## HTTP Endpoint
+
+Path: /_matrix-internal/identity/v1/check_credentials
+Method: POST
+Body as JSON UTF-8:
+
+{
+  "user": {
+    "id": "@username:domain",
+    "password": "plaintext-password"
+  }
+}
+
+If the credentials are accepted, the following JSON answer will be provided: 
+(auth.profile and any sub-key are optional.)
+
+{
+  "auth": {
+    "success": true,
+    "mxid": "@matrix.id.of.the.user:example.com",
+    "profile": {
+      "display_name": "John Doe",
+      "three_pids": [
+        {
+          "medium": "email",
+          "address": "john.doe@example.org"
+        },
+        {
+          "medium": "msisdn",
+          "address": "123456789"
+        }
+      ]
+    }
+  }
+}
+
+If the credentials are refused, the following JSON answer will be provided:
+
+{
+  "auth": {
+    "success": false
+  }
+}
+
+## Configuration
+
+This module requires the following configuration keys in the Synapse module
+configuration:
+
+password_providers:
+  - module: modules.rest_auth_provider.rest_auth_provider.RestAuthProvider
+    config:
+      endpoint: "http:endpoint"
+      regLower: false
+      setNameOnRegister: true
+      setNameOnLogin: true
+      updateThreepid: false
+      replaceThreepid: false
+      policy:
+        registration:
+          username:
+            enforceLowercase: true
+        login:
+          profile:
+            name: false
+        all:
+          threepid:
+            update: false
+            replace: false
+
