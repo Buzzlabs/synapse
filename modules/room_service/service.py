@@ -1,20 +1,18 @@
 # service.py
 import logging
-from synapse.module_api import ModuleApi
-from synapse.api.errors import SynapseError
-from synapse.handlers.room_member import create_requester
-from synapse.types import UserID
-from . import db
-
 import json
 from urllib.parse import quote
+
+from synapse.module_api import ModuleApi
+from synapse.api.errors import SynapseError
 
 from twisted.web.client import Agent, readBody
 from twisted.web.http_headers import Headers
 from twisted.web.iweb import IBodyProducer
-from zope.interface import implementer
 from twisted.internet.defer import succeed
+from zope.interface import implementer
 
+from . import db
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +33,7 @@ class _BodyProducer:
     def stopProducing(self):
         pass
 
+
 class RoomService:
     def __init__(
         self,
@@ -48,31 +47,9 @@ class RoomService:
         self.admin_user_id = admin_user_id
         self.admin_token = admin_token
         self.homeserver = homeserver
+
         self.store = self.hs.get_datastores().main
-
         self.agent = Agent(self.hs.get_reactor())
-
-    # ---------------- CREATE ----------------
-    # todo
-    # async def create_room(self, creator, data):
-    #     room_config = self._build_room_config(data)
-
-    #     room_id = await self.api.create_room(
-    #         creator_user_id=creator,
-    #         config=room_config,
-    #     )
-
-    #     await self.store.db_pool.runInteraction(
-    #         "save_room_metadata",
-    #         db.save_room_metadata,
-    #         room_id,
-    #         data,
-    #     )
-
-    #     if data["visible"]:
-    #         await self._ensure_admin(room_id)
-
-    #     return room_id
 
     # ---------------- DISCOVER ----------------
     async def discover(self):
@@ -82,7 +59,6 @@ class RoomService:
         )
 
         rooms = []
-        store = self.store
 
         for room_id, room_kind, access_type, price, keyword in rows:
             # garante admin na sala
@@ -100,7 +76,7 @@ class RoomService:
                 break
 
             # -------- member count --------
-            users = await store.get_users_in_room(room_id)
+            users = await self.store.get_users_in_room(room_id)
             member_count = len(users)
 
             rooms.append({
@@ -114,7 +90,6 @@ class RoomService:
             })
 
         return rooms
-
 
     # ---------------- INVITE ----------------
     async def join_by_keyword(self, target_user_id: str, keyword: str):
@@ -154,14 +129,10 @@ class RoomService:
         response = await self.agent.request(
             b"POST",
             url.encode(),
-            Headers(
-                {
-                    b"Authorization": [
-                        f"Bearer {self.admin_token}".encode()
-                    ],
-                    b"Content-Type": [b"application/json"],
-                }
-            ),
+            Headers({
+                b"Authorization": [f"Bearer {self.admin_token}".encode()],
+                b"Content-Type": [b"application/json"],
+            }),
             bodyProducer=_BodyProducer(payload),
         )
 
@@ -182,41 +153,46 @@ class RoomService:
         )
 
     # ---------------- INTERNAL ----------------
-    # todo
-    # def _build_room_config(self, data):
-    #     kind = data["room_kind"]
+    async def assert_is_admin(self, user_id: str):
+        is_admin = await self.api.is_user_admin(user_id)
 
-    #     if kind == "group":
-    #         return {"name": data["name"], "preset": "private_chat"}
+        if not is_admin:
+            raise SynapseError(
+                403,
+                "Only Synapse admins can perform this action"
+            )
 
-    #     if kind == "space":
-    #         return {
-    #             "name": data["name"],
-    #             "preset": "private_chat",
-    #             "creation_content": {"type": "m.space"},
-    #         }
-
-    #     if kind == "private":
-    #         return {"preset": "trusted_private_chat"}
-
-    #     raise Exception("invalid room_kind")
-
-    async def _ensure_admin(self, room_id):
+    async def _ensure_admin(self, room_id: str):
         try:
-            await self._force_join(self.admin_user_id, room_id)
+            await self._admin_join(room_id, self.admin_user_id)
         except SynapseError as e:
             if e.code != 403:
                 raise
 
-    async def _force_join(self, user_id: str, room_id: str):
-        try:
-            await self.hs.get_room_member_handler().join_room(
-                user_id=user_id,
-                room_id=room_id,
-                ratelimit=False,
-                remote_room_hosts=[],
+
+    async def _admin_join(self, room_id: str, user_id: str):
+        url = (
+            f"{self.homeserver}/_synapse/admin/v1/join/"
+            f"{quote(room_id)}"
+        )
+
+        payload = json.dumps({"user_id": user_id}).encode()
+
+        response = await self.agent.request(
+            b"POST",
+            url.encode(),
+            Headers({
+                b"Authorization": [f"Bearer {self.admin_token}".encode()],
+                b"Content-Type": [b"application/json"],
+            }),
+            bodyProducer=_BodyProducer(payload),
+        )
+
+        body = await readBody(response)
+
+        if response.code not in (200, 403):
+            raise SynapseError(
+                response.code,
+                body.decode(errors="ignore"),
             )
-        except SynapseError as e:
-            if e.code != 403:  
-                raise
 

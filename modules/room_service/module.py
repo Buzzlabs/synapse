@@ -7,6 +7,7 @@ from .service import RoomService
 from .resources.discover import DiscoverRoomResource
 from .resources.invite import InviteRoomResource
 from .resources.create import CreateRoomResource
+from modules.room_service.resources.is_admin import IsAdminResource
 
 logger = logging.getLogger(__name__)
 
@@ -36,4 +37,9 @@ class RoomServiceModule:
         api.register_web_resource(
             "/_synapse/room_service/create",
             CreateRoomResource(api, service),
+        )
+
+        api.register_web_resource(
+            "/_synapse/room_service/is_admin",
+            IsAdminResource(api),
         )
