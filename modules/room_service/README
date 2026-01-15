@@ -1,0 +1,51 @@
+# Room Service Module 
+
+Custom Synapse module responsible for managing discoverable rooms, including 
+- public room list (discover)
+- joining rooms via keyword (invite)
+- room creation (create - WIP)
+
+## Endpoints
+
+Discover Rooms: GET /_synapse/room_service/discover
+    response: 
+        {
+            "rooms": [
+                {
+                "room_id": "!abc:localhost",
+                "name": "Public Room",
+                "room_kind": "group",
+                "access_type": "free",
+                "price": 0,
+                "keyword": "buzz",
+                "member_count": 12
+                }
+            ]
+        }
+
+Join Room (by keyword): POST /_synapse/room_service/invite
+    body: 
+        {
+            "keyword": "buzz"
+        }
+    response:
+        {
+            "joined": true
+        }
+
+Create Room (WIP): ---
+
+## Configuration (homeserver.yaml)
+
+modules:
+  - module: modules.room_service.module.RoomServiceModule
+    config:
+      admin_user_id: "@admin:localhost"
+      admin_token: "YOUR_ADMIN_TOKEN"
+      homeserver: "http://homeserver"
+
+## Notes
+
+- the admin user is force-joined into discoverable rooms
+- member_count reflects real joined users
+- keyword is public entry key for the rooms

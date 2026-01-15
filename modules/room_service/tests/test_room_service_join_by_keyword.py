@@ -1,0 +1,116 @@
+import pytest
+from unittest.mock import MagicMock, AsyncMock
+
+from synapse.api.errors import SynapseError
+from modules.room_service.service import RoomService
+
+#testa: 
+# 1. busca a sala correta no banco usando keyword
+# 2. recusa keyword inexistente com erro 401
+# 3. chama o endpoint de admin join do synapse
+# 4. transforma erro do synapse em erro do domínio
+
+# para testar: PYTHONPATH=. pytest modules/room_service/tests/test_room_service_join_by_keyword.py -vv
+
+@pytest.mark.asyncio
+async def test_join_by_keyword_room_not_found():
+    api = MagicMock()
+    hs = MagicMock()
+    api._hs = hs
+
+    store = MagicMock()
+    store.db_pool.runInteraction = AsyncMock(return_value=None)
+    hs.get_datastores.return_value.main = store
+
+    service = RoomService(
+        api=api,
+        admin_user_id="@admin:localhost",
+        admin_token="token",
+        homeserver="http://localhost:8008",
+    )
+
+    with pytest.raises(SynapseError) as err:
+        await service.join_by_keyword(
+            target_user_id="@alice:localhost",
+            keyword="inexistente",
+        )
+
+    assert err.value.code == 404
+
+@pytest.mark.asyncio
+async def test_join_by_keyword_success():
+    api = MagicMock()
+    hs = MagicMock()
+    api._hs = hs
+
+    # mock do banco
+    store = MagicMock()
+    store.db_pool.runInteraction = AsyncMock(
+        return_value=("!roomid:localhost",)
+    )
+    hs.get_datastores.return_value.main = store
+
+    # mock do HTTP agent
+    agent = MagicMock()
+    response = MagicMock()
+    response.code = 200
+
+    agent.request = AsyncMock(return_value=response)
+
+    # mock readBody
+    from modules.room_service import service as service_module
+    service_module.readBody = AsyncMock(return_value=b"{}")
+
+    service = RoomService(
+        api=api,
+        admin_user_id="@admin:localhost",
+        admin_token="token",
+        homeserver="http://localhost:8008",
+    )
+
+    service.agent = agent
+
+    await service.join_by_keyword(
+        target_user_id="@alice:localhost",
+        keyword="buzz",
+    )
+
+    agent.request.assert_awaited_once()
+
+@pytest.mark.asyncio
+async def test_join_by_keyword_admin_join_fails():
+    api = MagicMock()
+    hs = MagicMock()
+    api._hs = hs
+
+    store = MagicMock()
+    store.db_pool.runInteraction = AsyncMock(
+        return_value=("!roomid:localhost",)
+    )
+    hs.get_datastores.return_value.main = store
+
+    agent = MagicMock()
+    response = MagicMock()
+    response.code = 500
+
+    agent.request = AsyncMock(return_value=response)
+
+    from modules.room_service import service as service_module
+    service_module.readBody = AsyncMock(return_value=b"boom")
+
+    service = RoomService(
+        api=api,
+        admin_user_id="@admin:localhost",
+        admin_token="token",
+        homeserver="http://localhost:8008",
+    )
+
+    service.agent = agent
+
+    with pytest.raises(SynapseError) as err:
+        await service.join_by_keyword(
+            target_user_id="@alice:localhost",
+            keyword="buzz",
+        )
+
+    assert err.value.code == 500
