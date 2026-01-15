@@ -11,6 +11,8 @@ from modules.room_service.resources.discover import DiscoverRoomResource
 # 3. campos que o app usa estão corretos
 # 4. o resource chama a regra de negócio certa
 
+# para testar: PYTHONPATH=. pytest modules/room_service/tests/test_discover.py
+
 @pytest.mark.asyncio
 async def test_discover_success():
     api = MagicMock()
