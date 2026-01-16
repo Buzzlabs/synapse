@@ -22,24 +22,19 @@ async def test_is_admin_resource_returns_true_for_admin():
     api.is_user_admin = AsyncMock(return_value=True)
 
     resource = IsAdminResource(api)
-
     request = MagicMock()
 
-    with patch(
-        "modules.room_service.resources.is_admin.respond_with_json"
-    ) as respond:
-        await resource._async_render_GET(request)
+    status, body = await resource._async_render_GET(request)
 
-        respond.assert_called_once_with(
-            request,
-            200,
-            {
-                "user_id": "@admin:localhost",
-                "is_admin": True,
-            },
-        )
+    api.get_user_by_req.assert_awaited_once_with(request)
+    api.is_user_admin.assert_awaited_once_with("@admin:localhost")
 
-
+    assert status == 200
+    assert body == {
+        "user_id": "@admin:localhost",
+        "is_admin": True,
+    }
+    
 @pytest.mark.asyncio
 async def test_is_admin_resource_returns_false_for_non_admin():
     api = MagicMock()
@@ -51,19 +46,15 @@ async def test_is_admin_resource_returns_false_for_non_admin():
     api.is_user_admin = AsyncMock(return_value=False)
 
     resource = IsAdminResource(api)
-
     request = MagicMock()
 
-    with patch(
-        "modules.room_service.resources.is_admin.respond_with_json"
-    ) as respond:
-        await resource._async_render_GET(request)
+    status, body = await resource._async_render_GET(request)
 
-        respond.assert_called_once_with(
-            request,
-            200,
-            {
-                "user_id": "@alice:localhost",
-                "is_admin": False,
-            },
-        )
+    api.get_user_by_req.assert_awaited_once_with(request)
+    api.is_user_admin.assert_awaited_once_with("@alice:localhost")
+
+    assert status == 200
+    assert body == {
+        "user_id": "@alice:localhost",
+        "is_admin": False,
+    }

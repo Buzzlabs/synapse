@@ -1,4 +1,4 @@
-from synapse.http.server import DirectServeJsonResource, respond_with_json
+from synapse.http.server import DirectServeJsonResource
 from synapse.module_api import ModuleApi
 
 
@@ -15,11 +15,7 @@ class IsAdminResource(DirectServeJsonResource):
 
         is_admin = await self.api.is_user_admin(user_id)
 
-        return respond_with_json(
-            request,
-            200,
-            {
-                "user_id": user_id,
-                "is_admin": is_admin,
-            },
-        )
+        return 200, {
+            "user_id": user_id,
+            "is_admin": is_admin,
+        }
