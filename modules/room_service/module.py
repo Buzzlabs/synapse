@@ -43,3 +43,8 @@ class RoomServiceModule:
             "/_synapse/room_service/is_admin",
             IsAdminResource(api),
         )
+
+        api.register_web_resource(
+            "/_synapse/room_service/create",
+            IsAdminResource(api),
+        )

@@ -1,27 +1,30 @@
-from twisted.web.resource import Resource
-from twisted.web.server import NOT_DONE_YET
-from twisted.internet.defer import ensureDeferred
+import json
+import logging
 
-from synapse.http.servlet import parse_json_object_from_request
-from synapse.http.server import respond_with_json
+from synapse.http.server import DirectServeJsonResource
+from synapse.api.errors import SynapseError
+
+logger = logging.getLogger(__name__)
 
 
-class CreateRoomResource(Resource):
+class CreateRoomResource(DirectServeJsonResource):
     isLeaf = True
 
     def __init__(self, api, service):
+        super().__init__()
         self.api = api
         self.service = service
 
-    def render_POST(self, request):
-        ensureDeferred(self._handle(request))
-        return NOT_DONE_YET
+    async def _async_render_POST(self, request):
+        content = json.loads(request.content.read())
 
-    async def _handle(self, request):
         requester = await self.api.get_user_by_req(request)
-        user_id = requester.user.to_string()
 
-        data = parse_json_object_from_request(request)
-        room_id = await self.service.create_room(user_id, data)
+        room_id = await self.service.create_room(
+            requester=requester,
+            data=content,
+        )
 
-        respond_with_json(request, 200, {"room_id": room_id})
+        return 200, {
+            "room_id": room_id,
+        }

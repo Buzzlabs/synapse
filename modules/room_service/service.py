@@ -61,8 +61,10 @@ class RoomService:
         rooms = []
 
         for room_id, room_kind, access_type, price, keyword in rows:
-            # garante admin na sala
-            await self._ensure_admin(room_id)
+
+            # 🔒 FILTRO: admin precisa estar na sala
+            if not await self._is_user_in_room(room_id, self.admin_user_id):
+                continue
 
             # -------- nome da sala --------
             state_events = await self.api.get_state_events_in_room(
@@ -90,6 +92,7 @@ class RoomService:
             })
 
         return rooms
+
 
     # ---------------- INVITE ----------------
     async def join_by_keyword(self, target_user_id: str, keyword: str):
@@ -151,6 +154,107 @@ class RoomService:
             target_user_id,
             room_id,
         )
+    
+    # ---------------- CREATE ----------------
+    async def create_room(self, requester, data):
+        creator = requester.user.to_string()
+        await self.assert_is_admin(creator)
+
+        exists = await self.store.db_pool.runInteraction(
+            "check_keyword",
+            lambda txn: (
+                txn.execute(
+                    "SELECT 1 FROM room_business WHERE keyword = %s",
+                    (data["keyword"],),
+                ),
+                txn.fetchone(),
+            )[1],
+        )
+
+        if exists:
+            raise SynapseError(409, "Keyword already in use")
+
+        join_rule = (
+            "invite"
+            if data.get("access_type") == "private"
+            else "public"
+        )
+
+        room_config = {
+            "name": data["name"],
+            "is_direct": False,
+            "visibility": "private",
+
+            # ❌ NUNCA usar preset aqui
+            # "preset": "public_chat",
+
+            # ✅ tudo definido ANTES da sala existir
+            "initial_state": [
+                {
+                    "type": "m.room.join_rules",
+                    "state_key": "",
+                    "content": {
+                        "join_rule": join_rule
+                    },
+                },
+                {
+                    "type": "m.room.power_levels",
+                    "state_key": "",
+                    "content": {
+                        "users": {
+                            creator: 100,
+                            self.admin_user_id: 100,
+                        },
+                        "users_default": 0,
+                        "events_default": 50,
+                        "state_default": 50,
+                        "ban": 50,
+                        "kick": 50,
+                        "redact": 50,
+                        "invite": 50,
+                    },
+                },
+            ],
+        }
+
+        # 1️⃣ cria a sala (já nasce correta)
+        room_id, _ = await self.api.create_room(
+            user_id=creator,
+            config=room_config,
+        )
+
+        # 2️⃣ salva metadados
+        await self.store.db_pool.runInteraction(
+            "save_room_metadata",
+            db.save_room_metadata,
+            room_id,
+            data,
+        )
+
+        # 3️⃣ admin entra (já tem PL 100 definido)
+        await self._admin_join(room_id, self.admin_user_id)
+
+        # 4️⃣ FECHA A SALA (AGORA SIM FUNCIONA)
+        if data.get("access_type") == "paid":
+            # 1️⃣ join_rules = invite
+            await self._admin_send_state(
+                room_id,
+                "m.room.join_rules",
+                "",
+                {"join_rule": "invite"},
+            )
+
+            # 2️⃣ guest_access = forbidden
+            await self._admin_send_state(
+                room_id,
+                "m.room.guest_access",
+                "",
+                {"guest_access": "forbidden"},
+            )
+
+
+        return room_id
+
 
     # ---------------- INTERNAL ----------------
     async def assert_is_admin(self, user_id: str):
@@ -164,6 +268,7 @@ class RoomService:
 
     async def _ensure_admin(self, room_id: str):
         try:
+
             await self._admin_join(room_id, self.admin_user_id)
         except SynapseError as e:
             if e.code != 403:
@@ -196,3 +301,37 @@ class RoomService:
                 body.decode(errors="ignore"),
             )
 
+    async def _is_user_in_room(self, room_id: str, user_id: str) -> bool:
+        users = await self.store.get_users_in_room(room_id)
+        return user_id in users
+
+    async def _admin_send_state(self, room_id: str, event_type: str, state_key: str, content: dict):
+        url = (
+            f"{self.homeserver}/_matrix/client/v3/rooms/"
+            f"{quote(room_id)}/state/"
+            f"{quote(event_type)}/"
+            f"{quote(state_key)}"
+        )
+
+        payload = json.dumps(content).encode()
+
+        response = await self.agent.request(
+            b"PUT",
+            url.encode(),
+            Headers({
+                b"Authorization": [f"Bearer {self.admin_token}".encode()],
+                b"Content-Type": [b"application/json"],
+            }),
+            bodyProducer=_BodyProducer(payload),
+        )
+
+        body = await readBody(response)
+
+        if response.code != 200:
+            logger.error(
+                "admin send_state failed %s code=%s body=%s",
+                event_type,
+                response.code,
+                body.decode(errors="ignore"),
+            )
+            raise SynapseError(500, "admin send_state failed")
