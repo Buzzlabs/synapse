@@ -160,6 +160,9 @@ class RoomService:
         creator = requester.user.to_string()
         await self.assert_is_admin(creator)
 
+        if not data.get("keyword"):
+            raise SynapseError(400, "Keyword is required")
+
         exists = await self.store.db_pool.runInteraction(
             "check_keyword",
             lambda txn: (
@@ -174,28 +177,24 @@ class RoomService:
         if exists:
             raise SynapseError(409, "Keyword already in use")
 
-        join_rule = (
-            "invite"
-            if data.get("access_type") == "private"
-            else "public"
-        )
+        visible = bool(data.get("visible", False))
+        access_type = data.get("access_type", "private")
+
+        price = int(data.get("price", 0))
+        if not visible:
+            price = 0
+
+        join_rule = "public"
 
         room_config = {
             "name": data["name"],
             "is_direct": False,
             "visibility": "private",
-
-            # ❌ NUNCA usar preset aqui
-            # "preset": "public_chat",
-
-            # ✅ tudo definido ANTES da sala existir
             "initial_state": [
                 {
                     "type": "m.room.join_rules",
                     "state_key": "",
-                    "content": {
-                        "join_rule": join_rule
-                    },
+                    "content": {"join_rule": join_rule},
                 },
                 {
                     "type": "m.room.power_levels",
@@ -217,41 +216,37 @@ class RoomService:
             ],
         }
 
-        # 1️⃣ cria a sala (já nasce correta)
         room_id, _ = await self.api.create_room(
             user_id=creator,
             config=room_config,
         )
 
-        # 2️⃣ salva metadados
         await self.store.db_pool.runInteraction(
             "save_room_metadata",
             db.save_room_metadata,
             room_id,
-            data,
+            {
+                **data,
+                "price": price,
+                "visible": visible,
+            },
         )
 
-        # 3️⃣ admin entra (já tem PL 100 definido)
         await self._admin_join(room_id, self.admin_user_id)
 
-        # 4️⃣ FECHA A SALA (AGORA SIM FUNCIONA)
-        if data.get("access_type") == "paid":
-            # 1️⃣ join_rules = invite
+        if access_type == "private":
             await self._admin_send_state(
                 room_id,
                 "m.room.join_rules",
                 "",
                 {"join_rule": "invite"},
             )
-
-            # 2️⃣ guest_access = forbidden
             await self._admin_send_state(
                 room_id,
                 "m.room.guest_access",
                 "",
                 {"guest_access": "forbidden"},
             )
-
 
         return room_id
 
