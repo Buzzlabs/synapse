@@ -26,7 +26,9 @@ User creation happens implicitly during login if the user does not exist.
 
 ---
 
-## HTTP Endpoint
+## REST Backend contract
+
+To use this module with your back-end, you will need to implement a single REST endpoint:
 
 Path: /_matrix-internal/identity/v1/check_credentials
 Method: POST
@@ -70,29 +72,5 @@ If the credentials are refused, the following JSON answer will be provided:
   }
 }
 
-## Configuration
 
-This module requires the following configuration keys in the Synapse module
-configuration:
-
-password_providers:
-  - module: modules.rest_auth_provider.rest_auth_provider.RestAuthProvider
-    config:
-      endpoint: "http:endpoint"
-      regLower: false
-      setNameOnRegister: true
-      setNameOnLogin: true
-      updateThreepid: false
-      replaceThreepid: false
-      policy:
-        registration:
-          username:
-            enforceLowercase: true
-        login:
-          profile:
-            name: false
-        all:
-          threepid:
-            update: false
-            replace: false
 
