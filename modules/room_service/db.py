@@ -42,3 +42,28 @@ def resolve_keyword(txn, keyword):
         (keyword,),
     )
     return txn.fetchone()
+
+def update_room_visibility(txn, room_id, *, visible: bool, price: int | None):
+    txn.execute(
+        """
+        UPDATE room_business
+        SET visible = ?, price = ?
+        WHERE room_id = ?
+        """,
+        (
+            visible,
+            price if price is not None else 0,
+            room_id,
+        ),
+    )
+
+def get_room_access_type(txn, room_id):
+    txn.execute(
+        """
+        SELECT access_type, visible
+        FROM room_business
+        WHERE room_id = ?
+        """,
+        (room_id,),
+    )
+    return txn.fetchone()

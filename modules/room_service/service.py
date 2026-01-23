@@ -6,6 +6,7 @@ from urllib.parse import quote
 from synapse.module_api import ModuleApi
 from synapse.api.errors import SynapseError
 
+from .db import update_room_visibility
 from twisted.web.client import Agent, readBody
 from twisted.web.http_headers import Headers
 from twisted.web.iweb import IBodyProducer
@@ -62,11 +63,9 @@ class RoomService:
 
         for room_id, room_kind, access_type, price, keyword in rows:
 
-            # 🔒 FILTRO: admin precisa estar na sala
             if not await self._is_user_in_room(room_id, self.admin_user_id):
                 continue
 
-            # -------- nome da sala --------
             state_events = await self.api.get_state_events_in_room(
                 room_id,
                 [("m.room.name", "")]
@@ -77,7 +76,6 @@ class RoomService:
                 name = ev.content.get("name", "Sem nome")
                 break
 
-            # -------- member count --------
             users = await self.store.get_users_in_room(room_id)
             member_count = len(users)
 
@@ -249,6 +247,101 @@ class RoomService:
             )
 
         return room_id
+
+    # ---------------- CHANGE VISIBILITY ----------------
+    async def change_visibility(
+        self,
+        *,
+        requester,
+        room_id: str,
+        visible: bool,
+        price: int | None = None,
+    ):
+        await self._is_user_in_room(room_id, requester)
+
+        row = await self.store.db_pool.runInteraction(
+            "get_room_access_type",
+            lambda txn: (
+                txn.execute(
+                    """
+                    SELECT access_type
+                    FROM room_business
+                    WHERE room_id = ?
+                    """,
+                    (room_id,),
+                ),
+                txn.fetchone(),
+            )[1],
+        )
+
+        if not row:
+            raise SynapseError(404, "Room not found")
+
+        access_type = row[0]  # 'public' | 'private'
+
+        if not visible:
+            # nv → preço irrelevante
+            price = 0
+
+        else:
+            # visible = true
+            if access_type == "private":
+                if price is None or price <= 0:
+                    raise SynapseError(
+                        400,
+                        "Missing price: private visible rooms must define a price",
+                    )
+            else:
+                # public
+                price = 0
+
+        def _update(txn):
+            update_room_visibility(
+                txn,
+                room_id,
+                visible=visible,
+                price=price,
+            )
+
+        await self.store.db_pool.runInteraction(
+            "update_room_visibility",
+            _update,
+        )
+
+        return {
+            "room_id": room_id,
+            "visible": visible,
+            "price": price,
+        }
+
+    # ---------------- GET VISIBILITY ----------------
+    async def get_room_visibility(self, *, room_id: str):
+        row = await self.store.db_pool.runInteraction(
+            "get_room_visibility",
+            lambda txn: (
+                txn.execute(
+                    """
+                    SELECT visible, price, access_type
+                    FROM room_business
+                    WHERE room_id = ?
+                    """,
+                    (room_id,),
+                ),
+                txn.fetchone(),
+            )[1],
+        )
+
+        if not row:
+            raise SynapseError(404, "Room not found")
+
+        visible, price, access_type = row
+
+        return {
+            "room_id": room_id,
+            "visible": bool(visible),
+            "price": int(price),
+            "access_type": access_type,
+        }
 
 
     # ---------------- INTERNAL ----------------
