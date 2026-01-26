@@ -343,6 +343,56 @@ class RoomService:
             "access_type": access_type,
         }
 
+    # ---------------- CHANGE PRICE ----------------
+    async def change_price(
+        self,
+        *,
+        requester,
+        room_id: str,
+        price: int,
+    ):
+        # só admin global
+        logger.info("user: %s", requester)
+        await self.api.is_user_admin(requester.user.to_string())
+
+        row = await self.store.db_pool.runInteraction(
+            "get_room_price_info",
+            db.get_room_price_info,
+            room_id,
+        )
+
+        if not row:
+            raise SynapseError(404, "Room not found")
+
+        visible_raw, access_type, current_price = row
+        visible = bool(visible_raw)
+
+        # regra de negócio
+        if not visible:
+            price = 0
+        else:
+            if access_type == "private":
+                if price <= 0:
+                    raise SynapseError(
+                        400,
+                        "Private visible rooms must have price > 0",
+                    )
+            else:
+                # público nunca paga
+                price = 0
+
+        await self.store.db_pool.runInteraction(
+            "update_room_price",
+            db.update_room_price,
+            room_id,
+            price,
+        )
+
+        return {
+            "room_id": room_id,
+            "price": price,
+        }
+
 
     # ---------------- INTERNAL ----------------
     async def assert_is_admin(self, user_id: str):

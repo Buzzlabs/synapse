@@ -67,3 +67,25 @@ def get_room_access_type(txn, room_id):
         (room_id,),
     )
     return txn.fetchone()
+
+def get_room_price_info(txn, room_id):
+    txn.execute(
+        """
+        SELECT visible, access_type, price
+        FROM room_business
+        WHERE room_id = ?
+        """,
+        (room_id,),
+    )
+    return txn.fetchone()
+
+
+def update_room_price(txn, room_id, price: int):
+    txn.execute(
+        """
+        UPDATE room_business
+        SET price = ?
+        WHERE room_id = ?
+        """,
+        (price, room_id),
+    )
