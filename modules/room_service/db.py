@@ -19,6 +19,17 @@ def save_room_metadata(txn, room_id, data):
         ),
     )
 
+def get_room_by_keyword(txn, keyword: str):
+    txn.execute(
+        """
+        SELECT room_id
+        FROM room_business
+        WHERE keyword = ? AND visible = TRUE
+        """,
+        (keyword,),
+    )
+    return txn.fetchone()
+
 
 def get_visible_rooms(txn):
     txn.execute(
@@ -31,6 +42,39 @@ def get_visible_rooms(txn):
     )
     return txn.fetchall()
 
+def keyword_exists(txn, keyword: str) -> bool:
+    txn.execute(
+        """
+        SELECT 1
+        FROM room_business
+        WHERE keyword = ?
+        """,
+        (keyword,),
+    )
+    return txn.fetchone() is not None
+
+def get_room_access_type(txn, room_id: str):
+    txn.execute(
+        """
+        SELECT access_type
+        FROM room_business
+        WHERE room_id = ?
+        """,
+        (room_id,),
+    )
+    row = txn.fetchone()
+    return row[0] if row else None
+
+def get_room_visibility(txn, room_id: str):
+    txn.execute(
+        """
+        SELECT visible, price, access_type
+        FROM room_business
+        WHERE room_id = ?
+        """,
+        (room_id,),
+    )
+    return txn.fetchone()
 
 def resolve_keyword(txn, keyword):
     txn.execute(
@@ -43,30 +87,16 @@ def resolve_keyword(txn, keyword):
     )
     return txn.fetchone()
 
-def update_room_visibility(txn, room_id, *, visible: bool, price: int | None):
+def update_room_visibility(txn, room_id: str, visible: bool, price: int):
     txn.execute(
         """
         UPDATE room_business
         SET visible = ?, price = ?
         WHERE room_id = ?
         """,
-        (
-            visible,
-            price if price is not None else 0,
-            room_id,
-        ),
+        (visible, price, room_id),
     )
 
-def get_room_access_type(txn, room_id):
-    txn.execute(
-        """
-        SELECT access_type, visible
-        FROM room_business
-        WHERE room_id = ?
-        """,
-        (room_id,),
-    )
-    return txn.fetchone()
 
 def get_room_price_info(txn, room_id):
     txn.execute(

@@ -6,7 +6,6 @@ from urllib.parse import quote
 from synapse.module_api import ModuleApi
 from synapse.api.errors import SynapseError
 
-from .db import update_room_visibility
 from twisted.web.client import Agent, readBody
 from twisted.web.http_headers import Headers
 from twisted.web.iweb import IBodyProducer
@@ -54,16 +53,29 @@ class RoomService:
 
     # ---------------- DISCOVER ----------------
     async def discover(self):
+        logger.info("discover: start fetching visible rooms")
         rows = await self.store.db_pool.runInteraction(
             "get_visible_rooms",
             db.get_visible_rooms,
         )
 
+        logger.info("discover: %d visible rooms found in DB", len(rows))
         rooms = []
 
         for room_id, room_kind, access_type, price, keyword in rows:
-
+            logger.debug(
+                "discover: processing room_id=%s kind=%s access=%s visible_price=%s keyword=%s",
+                room_id,
+                room_kind,
+                access_type,
+                price,
+                keyword,
+            )
             if not await self._is_user_in_room(room_id, self.admin_user_id):
+                logger.debug(
+                    "discover: skipping room_id=%s (admin not in room)",
+                    room_id,
+                )
                 continue
 
             state_events = await self.api.get_state_events_in_room(
@@ -79,6 +91,12 @@ class RoomService:
             users = await self.store.get_users_in_room(room_id)
             member_count = len(users)
 
+            logger.debug(
+                "discover: room_id=%s name='%s' members=%d",
+                room_id,
+                name,
+                member_count,
+            )
             rooms.append({
                 "room_id": room_id,
                 "name": name,
@@ -89,27 +107,33 @@ class RoomService:
                 "member_count": member_count,
             })
 
+        logger.info(
+            "discover: finished, %d rooms returned",
+            len(rooms),
+        )
+
         return rooms
 
 
     # ---------------- INVITE ----------------
     async def join_by_keyword(self, target_user_id: str, keyword: str):
+        logger.info(
+            "join_by_keyword: start target=%s keyword=%s",
+            target_user_id,
+            keyword,
+        )
         row = await self.store.db_pool.runInteraction(
             "get_room_by_keyword",
-            lambda txn: (
-                txn.execute(
-                    """
-                    SELECT room_id
-                    FROM room_business
-                    WHERE keyword = %s AND visible = TRUE
-                    """,
-                    (keyword,),
-                ),
-                txn.fetchone(),
-            )[1],
+            db.get_room_by_keyword,
+            keyword,
         )
 
+
         if not row:
+            logger.warning(
+                "join_by_keyword: no room found for keyword=%s",
+                keyword,
+            )
             raise SynapseError(404, "Room not found")
 
         room_id = row[0]
@@ -127,6 +151,11 @@ class RoomService:
 
         payload = json.dumps({"user_id": target_user_id}).encode()
 
+        logger.debug(
+            "join_by_keyword: sending admin join request user=%s room_id=%s",
+            target_user_id,
+            room_id,
+        )
         response = await self.agent.request(
             b"POST",
             url.encode(),
@@ -156,23 +185,32 @@ class RoomService:
     # ---------------- CREATE ----------------
     async def create_room(self, requester, data):
         creator = requester.user.to_string()
+        logger.info(
+            "create_room: start creator=%s data_keys=%s",
+            creator,
+            list(data.keys()),
+        )
         await self.assert_is_admin(creator)
 
         if not data.get("keyword"):
+            logger.warning(
+                "create_room: missing keyword creator=%s",
+                creator,
+            )
             raise SynapseError(400, "Keyword is required")
 
         exists = await self.store.db_pool.runInteraction(
-            "check_keyword",
-            lambda txn: (
-                txn.execute(
-                    "SELECT 1 FROM room_business WHERE keyword = %s",
-                    (data["keyword"],),
-                ),
-                txn.fetchone(),
-            )[1],
+            "keyword_exists",
+            db.keyword_exists,
+            data["keyword"],
         )
 
         if exists:
+            logger.warning(
+                "create_room: keyword already in use keyword=%s creator=%s",
+                data["keyword"],
+                creator,
+            )
             raise SynapseError(409, "Keyword already in use")
 
         visible = bool(data.get("visible", False))
@@ -181,6 +219,14 @@ class RoomService:
         price = int(data.get("price", 0))
         if not visible:
             price = 0
+
+        logger.debug(
+            "create_room: business params keyword=%s visible=%s access_type=%s price=%s",
+            data["keyword"],
+            visible,
+            access_type,
+            price,
+        )
 
         join_rule = "public"
 
@@ -213,10 +259,19 @@ class RoomService:
                 },
             ],
         }
-
+        logger.info(
+            "create_room: creating room name='%s' creator=%s",
+            data.get("name"),
+            creator,
+        )
         room_id, _ = await self.api.create_room(
             user_id=creator,
             config=room_config,
+        )
+
+        logger.info(
+            "create_room: room created room_id=%s",
+            room_id,
         )
 
         await self.store.db_pool.runInteraction(
@@ -228,11 +283,26 @@ class RoomService:
                 "price": price,
                 "visible": visible,
             },
+        )   
+
+        logger.debug(
+            "create_room: metadata saved room_id=%s",
+            room_id,
         )
 
         await self._admin_join(room_id, self.admin_user_id)
 
+        logger.debug(
+            "create_room: admin joined room room_id=%s admin=%s",
+            room_id,
+            self.admin_user_id,
+        )
+
         if access_type == "private":
+            logger.info(
+                "create_room: configuring private access room_id=%s",
+                room_id,
+            )
             await self._admin_send_state(
                 room_id,
                 "m.room.join_rules",
@@ -246,6 +316,11 @@ class RoomService:
                 {"guest_access": "forbidden"},
             )
 
+        logger.info(
+            "create_room: success room_id=%s creator=%s",
+            room_id,
+            creator,
+        )
         return room_id
 
     # ---------------- CHANGE VISIBILITY ----------------
@@ -257,55 +332,92 @@ class RoomService:
         visible: bool,
         price: int | None = None,
     ):
-        await self._is_user_in_room(room_id, requester)
-
-        row = await self.store.db_pool.runInteraction(
-            "get_room_access_type",
-            lambda txn: (
-                txn.execute(
-                    """
-                    SELECT access_type
-                    FROM room_business
-                    WHERE room_id = ?
-                    """,
-                    (room_id,),
-                ),
-                txn.fetchone(),
-            )[1],
+        logger.info(
+            "change_visibility: start room_id=%s requester=%s visible=%s price=%s",
+            room_id,
+            requester.user.to_string(),
+            visible,
+            price,
         )
 
-        if not row:
+        is_in_room = await self._is_user_in_room(room_id, requester.user.to_string())
+        if not is_in_room:
+            logger.warning(
+                "change_visibility: requester not in room room_id=%s user=%s",
+                room_id,
+                requester.user.to_string(),
+            )
+            raise SynapseError(403, "User not in room")
+
+        access_type = await self.store.db_pool.runInteraction(
+            "get_room_access_type",
+            db.get_room_access_type,
+            room_id,
+        )
+
+        if access_type is None:
+            logger.warning(
+                "change_visibility: room not found room_id=%s",
+                room_id,
+            )
             raise SynapseError(404, "Room not found")
 
-        access_type = row[0]  # 'public' | 'private'
+        access_type = access_type.lower()
+
+        logger.debug(
+            "change_visibility: current access_type=%s room_id=%s",
+            access_type,
+            room_id,
+        )
 
         if not visible:
-            # nv → preço irrelevante
+            logger.debug(
+                "change_visibility: setting invisible, price forced to 0 room_id=%s",
+                room_id,
+            )
             price = 0
 
         else:
-            # visible = true
             if access_type == "private":
                 if price is None or price <= 0:
+                    logger.warning(
+                        "change_visibility: missing/invalid price for private room "
+                        "room_id=%s price=%s",
+                        room_id,
+                        price,
+                    )
                     raise SynapseError(
                         400,
                         "Missing price: private visible rooms must define a price",
                     )
             else:
                 # public
+                logger.debug(
+                    "change_visibility: public room, price forced to 0 room_id=%s",
+                    room_id,
+                )
                 price = 0
 
-        def _update(txn):
-            update_room_visibility(
-                txn,
-                room_id,
-                visible=visible,
-                price=price,
-            )
+        logger.info(
+            "change_visibility: updating DB room_id=%s visible=%s price=%s",
+            room_id,
+            visible,
+            price,
+        )
 
         await self.store.db_pool.runInteraction(
             "update_room_visibility",
-            _update,
+            db.update_room_visibility,
+            room_id,
+            visible,
+            price,
+        )
+
+        logger.info(
+            "change_visibility: success room_id=%s visible=%s price=%s",
+            room_id,
+            visible,
+            price,
         )
 
         return {
@@ -316,25 +428,33 @@ class RoomService:
 
     # ---------------- GET VISIBILITY ----------------
     async def get_room_visibility(self, *, room_id: str):
+        logger.info(
+            "get_room_visibility: start room_id=%s",
+            room_id,
+        )
+
         row = await self.store.db_pool.runInteraction(
             "get_room_visibility",
-            lambda txn: (
-                txn.execute(
-                    """
-                    SELECT visible, price, access_type
-                    FROM room_business
-                    WHERE room_id = ?
-                    """,
-                    (room_id,),
-                ),
-                txn.fetchone(),
-            )[1],
+            db.get_room_visibility,
+            room_id,
         )
 
         if not row:
+            logger.warning(
+                "get_room_visibility: room not found room_id=%s",
+                room_id,
+            )
             raise SynapseError(404, "Room not found")
 
         visible, price, access_type = row
+
+        logger.info(
+            "get_room_visibility: success room_id=%s visible=%s price=%s access_type=%s",
+            room_id,
+            bool(visible),
+            price,
+            access_type,
+        )
 
         return {
             "room_id": room_id,
@@ -351,9 +471,15 @@ class RoomService:
         room_id: str,
         price: int,
     ):
-        # só admin global
-        logger.info("user: %s", requester)
-        await self.api.is_user_admin(requester.user.to_string())
+        user_id = requester.user.to_string()
+        logger.info(
+            "change_price: start user=%s room_id=%s requested_price=%s",
+            user_id,
+            room_id,
+            price,
+        )
+
+        await self.api.is_user_admin(user_id)
 
         row = await self.store.db_pool.runInteraction(
             "get_room_price_info",
@@ -362,25 +488,69 @@ class RoomService:
         )
 
         if not row:
+            logger.warning(
+                "change_price: room not found room_id=%s user=%s",
+                room_id,
+                user_id,
+            )
             raise SynapseError(404, "Room not found")
 
         visible_raw, access_type, current_price = row
         visible = bool(visible_raw)
 
-        # regra de negócio
+        logger.debug(
+            "change_price: current state room_id=%s visible=%s access_type=%s current_price=%s",
+            room_id,
+            visible,
+            access_type,
+            current_price,
+        )
         if not visible:
+            if price not in (None, 0):
+                logger.warning(
+                    "change_price: rejected non-visible room room_id=%s price=%s",
+                    room_id,
+                    price,
+                )
+                raise SynapseError(
+                    400,
+                    "Cannot set price on a non-visible room",
+                )
             price = 0
+
         else:
+            # visible = true
             if access_type == "private":
-                if price <= 0:
+                if price is None or price <= 0:
+                    logger.warning(
+                        "change_price: invalid price for private room "
+                        "room_id=%s price=%s",
+                        room_id,
+                        price,
+                    )
                     raise SynapseError(
                         400,
                         "Private visible rooms must have price > 0",
                     )
             else:
-                # público nunca paga
+                # public
+                if price not in (None, 0):
+                    logger.warning(
+                        "change_price: rejected price on public room "
+                        "room_id=%s price=%s",
+                        room_id,
+                        price,
+                    )
+                    raise SynapseError(
+                        400,
+                        "Public rooms cannot have a price",
+                    )
                 price = 0
-
+        logger.info(
+            "change_price: updating price room_id=%s new_price=%s",
+            room_id,
+            price,
+        )
         await self.store.db_pool.runInteraction(
             "update_room_price",
             db.update_room_price,
@@ -388,6 +558,11 @@ class RoomService:
             price,
         )
 
+        logger.info(
+            "change_price: success room_id=%s price=%s",
+            room_id,
+            price,
+        )
         return {
             "room_id": room_id,
             "price": price,
