@@ -519,7 +519,6 @@ class RoomService:
             price = 0
 
         else:
-            # visible = true
             if access_type == "private":
                 if price is None or price <= 0:
                     logger.warning(
@@ -533,7 +532,6 @@ class RoomService:
                         "Private visible rooms must have price > 0",
                     )
             else:
-                # public
                 if price not in (None, 0):
                     logger.warning(
                         "change_price: rejected price on public room "
@@ -565,6 +563,103 @@ class RoomService:
         )
         return {
             "room_id": room_id,
+            "price": price,
+        }
+
+    # ---------------- CHANGE ACCESS TYPE ---------------
+    async def change_access_type(
+        self,
+        *,
+        requester,
+        room_id: str,
+        access_type: str,
+        price: int | None = None,
+    ):
+        logger.info(
+            "change_access_type: start room_id=%s user=%s access_type=%s price=%s",
+            room_id,
+            requester.user.to_string(),
+            access_type,
+            price,
+        )
+
+        await self.api.is_user_admin(requester.user.to_string())
+
+        access_type = access_type.lower()
+        if access_type not in ("public", "private"):
+            raise SynapseError(400, "Invalid access_type")
+
+        row = await self.store.db_pool.runInteraction(
+            "get_room_price_info",
+            db.get_room_price_info,
+            room_id,
+        )
+
+        if not row:
+            raise SynapseError(404, "Room not found")
+
+        visible_raw, current_access_type, current_price = row
+        visible = bool(visible_raw)
+
+        logger.debug(
+            "change_access_type: current state room_id=%s visible=%s access_type=%s price=%s",
+            room_id,
+            visible,
+            current_access_type,
+            current_price,
+        )
+
+        if not visible:
+            logger.debug(
+                "change_access_type: room not visible, forcing price=0 room_id=%s",
+                room_id,
+            )
+            price = 0
+
+        else:
+            if current_access_type == "public" and access_type == "private":
+                # PUBLIC → PRIVATE (visível)
+                if price is None or price <= 0:
+                    price = 1000
+                    logger.info(
+                        "change_access_type: no price provided, applying default price=%s room_id=%s",
+                        price,
+                        room_id,
+                    )
+                    
+            elif current_access_type == "private" and access_type == "public":
+                # PRIVATE → PUBLIC
+                logger.debug(
+                    "change_access_type: private->public, forcing price=0 room_id=%s",
+                    room_id,
+                )
+                price = 0
+
+        logger.info(
+            "change_access_type: updating DB room_id=%s access_type=%s price=%s",
+            room_id,
+            access_type,
+            price,
+        )
+
+        await self.store.db_pool.runInteraction(
+            "update_room_access_and_price",
+            db.update_room_access_and_price,
+            room_id,
+            access_type,
+            price,
+        )
+
+        logger.info(
+            "change_access_type: success room_id=%s access_type=%s price=%s",
+            room_id,
+            access_type,
+            price,
+        )
+
+        return {
+            "room_id": room_id,
+            "access_type": access_type,
             "price": price,
         }
 

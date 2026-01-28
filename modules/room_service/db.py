@@ -65,6 +65,16 @@ def get_room_access_type(txn, room_id: str):
     row = txn.fetchone()
     return row[0] if row else None
 
+def update_room_access_and_price(txn, room_id: str, access_type: str, price: int):
+    txn.execute(
+        """
+        UPDATE room_business
+        SET access_type = ?, price = ?
+        WHERE room_id = ?
+        """,
+        (access_type, price, room_id),
+    )
+
 def get_room_visibility(txn, room_id: str):
     txn.execute(
         """
