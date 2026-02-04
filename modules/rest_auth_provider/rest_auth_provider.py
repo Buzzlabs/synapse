@@ -4,8 +4,14 @@ import requests
 import hashlib
 import unicodedata
 
-from synapse.api.errors import AuthError
-from synapse.types import UserID
+try:
+    from synapse.api.errors import AuthError
+except ImportError:
+    class AuthError(Exception):
+        def __init__(self, code, msg):
+            super().__init__(msg)
+            self.code = code
+
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +69,10 @@ class RestAuthProvider:
             resp = requests.post(
                 f"{self.api_base}{self.check_endpoint}",
                 json={
-                    "email": email,
-                    "password": RestAuthProvider.hash_password(password),
+                    "subscriber-user/email": email,
+                    "subscriber-user/password": RestAuthProvider.hash_password(password),
                 },
+
                 timeout=self.timeout,
             )
         except Exception as e:
