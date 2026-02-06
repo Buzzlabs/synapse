@@ -129,3 +129,12 @@ def update_room_price(txn, room_id, price: int):
         """,
         (price, room_id),
     )
+
+def delete_room_business(txn, room_id: str):
+    txn.execute(
+        """
+        DELETE FROM room_business
+        WHERE room_id = ?
+        """,
+        (room_id,),
+    )

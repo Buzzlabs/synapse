@@ -47,6 +47,7 @@ class RoomService:
         self.admin_user_id = admin_user_id
         self.admin_token = admin_token
         self.homeserver = homeserver
+        self.room_member_handler = self.hs.get_room_member_handler()
 
         self.store = self.hs.get_datastores().main
         self.agent = Agent(self.hs.get_reactor())
@@ -662,7 +663,79 @@ class RoomService:
             "access_type": access_type,
             "price": price,
         }
+    # ---------------- DELETE ROOM ---------------
+    async def delete_room(self, *, requester, room_id: str):
+        user_id = requester.user.to_string()
 
+        logger.info(
+            "delete_room: start room_id=%s requester=%s",
+            room_id,
+            user_id,
+        )
+
+        await self.assert_is_admin(user_id)
+
+        row = await self.store.db_pool.runInteraction(
+            "get_room_visibility",
+            db.get_room_visibility,
+            room_id,
+        )
+
+        if not row:
+            logger.warning(
+                "delete_room: room not found room_id=%s",
+                room_id,
+            )
+            raise SynapseError(404, "Room not found")
+
+        members = await self._admin_get_room_members(room_id)
+
+        logger.info(
+            "delete_room: kicking %d members from room_id=%s",
+            len(members),
+            room_id,
+        )
+
+        # envia tombstone PRIMEIRO
+        await self._admin_send_state(
+            room_id,
+            "m.room.tombstone",
+            "",
+            {
+                "body": "This room has been deleted",
+                "replacement_room": None,
+            },
+        )
+
+        # agora pode kickar os outros
+        for member in members:
+            if member == user_id:
+                continue
+            await self._admin_kick_user(
+                room_id=room_id,
+                target_user_id=member,
+                reason="Room deleted",
+            )
+
+        # requester sai por último
+        await self._leave_room(room_id, requester)
+
+
+        await self.store.db_pool.runInteraction(
+            "delete_room_business",
+            db.delete_room_business,
+            room_id,
+        )
+
+        logger.info(
+            "delete_room: success room_id=%s",
+            room_id,
+        )
+
+        return {
+            "room_id": room_id,
+            "deleted": True,
+        }
 
     # ---------------- INTERNAL ----------------
     async def assert_is_admin(self, user_id: str):
@@ -743,3 +816,82 @@ class RoomService:
                 body.decode(errors="ignore"),
             )
             raise SynapseError(500, "admin send_state failed")
+
+    async def _admin_get_room_members(self, room_id: str) -> list[str]:
+        url = (
+            f"{self.homeserver}/_matrix/client/v3/rooms/"
+            f"{quote(room_id)}/members"
+        )
+
+        response = await self.agent.request(
+            b"GET",
+            url.encode(),
+            Headers({
+                b"Authorization": [f"Bearer {self.admin_token}".encode()],
+            }),
+        )
+
+        body = await readBody(response)
+
+        if response.code != 200:
+            raise SynapseError(
+                response.code,
+                body.decode(errors="ignore"),
+            )
+
+        data = json.loads(body)
+        return [
+            ev["state_key"]
+            for ev in data.get("chunk", [])
+            if ev["type"] == "m.room.member"
+            and ev["content"].get("membership") == "join"
+        ]
+        
+    async def _admin_kick_user(
+        self,
+        *,
+        room_id: str,
+        target_user_id: str,
+        reason: str,
+    ):
+        url = (
+            f"{self.homeserver}/_matrix/client/v3/rooms/"
+            f"{quote(room_id)}/kick"
+        )
+
+        payload = json.dumps({
+            "user_id": target_user_id,
+            "reason": reason,
+        }).encode()
+
+        response = await self.agent.request(
+            b"POST",
+            url.encode(),
+            Headers({
+                b"Authorization": [f"Bearer {self.admin_token}".encode()],
+                b"Content-Type": [b"application/json"],
+            }),
+            bodyProducer=_BodyProducer(payload),
+        )
+
+        body = await readBody(response)
+
+        if response.code != 200:
+            logger.error(
+                "kick failed room_id=%s user=%s code=%s body=%s",
+                room_id,
+                target_user_id,
+                response.code,
+                body.decode(errors="ignore"),
+            )
+            raise SynapseError(500, "Failed to kick user")
+
+    async def _leave_room(self, room_id, requester):
+        await self.room_member_handler.update_membership(
+            requester=requester,
+            target=requester.user,
+            room_id=room_id,
+            action="leave",
+            ratelimit=False,
+        )
+

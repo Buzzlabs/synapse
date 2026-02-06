@@ -11,6 +11,7 @@ from .resources.change_visibility import ChangeVisibilityResource
 from .resources.get_visibility import GetVisibilityResource
 from .resources.change_price import ChangePriceResource
 from .resources.change_access_type import ChangeAccessTypeResource
+from .resources.delete_room import DeleteRoomResource
 from modules.room_service.resources.is_admin import IsAdminResource
 
 logger = logging.getLogger(__name__)
@@ -67,4 +68,9 @@ class RoomServiceModule:
         api.register_web_resource(
             "/_synapse/room_service/changeaccesstype",
             ChangeAccessTypeResource(api, service),
+        )
+
+        api.register_web_resource(
+            "/_synapse/room_service/deleteroom",
+            DeleteRoomResource(api, service),
         )
