@@ -112,5 +112,4 @@ password_providers:
   - module: modules.rest_auth_provider.rest_auth_provider.RestAuthProvider
     config:
       api_base: "https://example.paywall.com"
-      homeserver: "example.com"
 ```
