@@ -24,16 +24,15 @@ class RestAuthProvider:
         self.api_base = config["api_base"]
         self.check_endpoint = "/public/authenticate"
 
-        self.homeserver = config["homeserver"]
         self.timeout = config.get("timeout", 5)
 
-        logger.info("RestAuthProvider carregado")
+        logger.info("RestAuthProvider loaded")
 
     @staticmethod
     def parse_config(config):
-        for key in ("api_base", "homeserver"):
+        for key in ("api_base",):
             if key not in config:
-                raise Exception(f"{key} é obrigatório")
+                raise Exception(f"{key} is necessary")
         return config
 
     @staticmethod
@@ -45,20 +44,22 @@ class RestAuthProvider:
     async def check_auth(self, username, login_type, login_dict):
         password = login_dict.get("password")
         if not password:
-            raise AuthError(403, "Senha obrigatória")
+            raise AuthError(403, "password is necessary")
 
         email = self._extract_email(username)
         if not email:
-            raise AuthError(400, "Email obrigatório")
+            raise AuthError(400, "Email is necessary")
 
         logger.info("Login request email=%s", email)
 
         data = self._check_paywall(email, password)
 
         localpart = self._build_localpart_from_user(data)
-        mxid = f"@{localpart}:{self.homeserver}"
+        server_name = self.account_handler._hs.hostname
+        mxid = f"@{localpart}:{server_name}"
 
-        logger.info("MXID resolvido: %s", mxid)
+
+        logger.info("MXID resolved: %s", mxid)
 
         await self._ensure_user_exists(mxid)
 
@@ -76,26 +77,26 @@ class RestAuthProvider:
                 timeout=self.timeout,
             )
         except Exception as e:
-            logger.error("Erro chamando paywall: %s", e)
-            raise AuthError(500, "Erro no serviço de autenticação")
+            logger.error("Error calling paywall: %s", e)
+            raise AuthError(500, "Authentication service error")
 
         if resp.status_code != 200:
-            raise AuthError(403, "Credenciais inválidas")
+            raise AuthError(403, "Invalid credentials")
 
         data = resp.json()
 
         if not isinstance(data, dict) or "email" not in data:
-            raise AuthError(403, "Resposta inválida do paywall")
+            raise AuthError(403, "Invalid response from the paywall")
 
         return data
 
  
     async def _ensure_user_exists(self, mxid: str):
         if await self.account_handler.check_user_exists(mxid):
-            logger.info("Usuário %s já existe", mxid)
+            logger.info("User %s already exists", mxid)
             return
 
-        logger.info("Criando usuário %s", mxid)
+        logger.info("Creating user %s", mxid)
 
         localpart = mxid.split(":", 1)[0][1:]
 
@@ -116,7 +117,7 @@ class RestAuthProvider:
         email = data.get("email")
 
         if not user_id:
-            raise AuthError(403, "ID do usuário ausente no paywall")
+            raise AuthError(403, "User ID missing from the paywall response")
 
         info = data.get("info") or {}
         first = info.get("first-name")
