@@ -130,7 +130,11 @@ class RestAuthProvider:
             base = email.split("@", 1)[0]
 
         else:
-            base = "user"
+            raise AuthError(
+                403,
+                "Insufficient user data to build Matrix localpart"
+            )
+
 
         base = self._normalize_localpart(base)
 
