@@ -24,6 +24,10 @@ def provider(config, account_handler):
     return RestAuthProvider(config, account_handler)
 
 def test_check_paywall_rejects_invalid_credentials(monkeypatch, provider):
+    """
+    Should reject authentication when the paywall returns invalid credentials (403).
+    """
+    
     account_handler.register = AsyncMock()
     mock_resp = Mock()
     mock_resp.status_code = 403
@@ -40,6 +44,9 @@ def test_check_paywall_rejects_invalid_credentials(monkeypatch, provider):
     account_handler.register.assert_not_awaited()
 
 def test_check_paywall_rejects_invalid_response(monkeypatch, provider):
+    """
+    Should reject authentication when the paywall response format is invalid.
+    """
     account_handler.register = AsyncMock()
     mock_resp = Mock()
     mock_resp.status_code = 200
@@ -57,6 +64,9 @@ def test_check_paywall_rejects_invalid_response(monkeypatch, provider):
     account_handler.register.assert_not_awaited()
 
 def test_check_paywall_handles_network_errors(monkeypatch, provider):
+    """
+    Should raise a server error when the paywall service is unreachable.
+    """
     account_handler.register = AsyncMock()
     def boom(*a, **k):
         raise Exception("paywall down")
@@ -73,6 +83,9 @@ def test_check_paywall_handles_network_errors(monkeypatch, provider):
     account_handler.register.assert_not_awaited()
 
 def test_build_localpart_requires_user_id(provider):
+    """
+    Should fail when the paywall response does not contain a user ID.
+    """
     account_handler.register = AsyncMock()
     data = {"email": "a@b.com"}
 
@@ -87,6 +100,10 @@ def test_build_localpart_requires_user_id(provider):
 async def test_check_auth_creates_user_when_not_existing_using_firstname_and_lastname(
     monkeypatch, provider, account_handler
 ):
+    """
+    Should create a new Matrix user using first and last name as localpart
+    when the user does not exist.
+    """
     provider._hs = SimpleNamespace()
 
     mock_resp = Mock()
@@ -117,6 +134,9 @@ async def test_check_auth_creates_user_when_not_existing_using_firstname_and_las
 async def test_check_auth_creates_user_when_not_existing_using_email(
     monkeypatch, provider, account_handler
 ):
+    """
+    Should fall back to email prefix as localpart when first and last name are missing.
+    """
     provider._hs = SimpleNamespace()
 
     mock_resp = Mock()
@@ -146,6 +166,9 @@ async def test_check_auth_creates_user_when_not_existing_using_email(
 
 @pytest.mark.asyncio
 async def test_check_auth_does_not_recreate_existing_user(monkeypatch, config):
+    """
+    Should not register the user again if the Matrix user already exists.
+    """
     account_handler = Mock()
     account_handler.check_user_exists = AsyncMock(return_value=True)
     account_handler.register = AsyncMock()
@@ -176,6 +199,9 @@ async def test_check_auth_does_not_recreate_existing_user(monkeypatch, config):
 
 @pytest.mark.asyncio
 async def test_check_auth_requires_password(provider):
+    """
+    Should reject authentication when no password is provided.
+    """
     account_handler.register = AsyncMock()
     with pytest.raises(AuthError) as err:
         await provider.check_auth(
@@ -191,6 +217,9 @@ async def test_check_auth_requires_password(provider):
 
 @pytest.mark.asyncio
 async def test_check_auth_rejects_non_email_username(provider):
+    """
+    Should reject authentication when the username is not a valid email.
+    """
     account_handler.register = AsyncMock()
     with pytest.raises(AuthError) as err:
         await provider.check_auth(
