@@ -340,15 +340,8 @@ class RoomService:
             visible,
             price,
         )
-
-        is_in_room = await self._is_user_in_room(room_id, requester.user.to_string())
-        if not is_in_room:
-            logger.warning(
-                "change_visibility: requester not in room room_id=%s user=%s",
-                room_id,
-                requester.user.to_string(),
-            )
-            raise SynapseError(403, "User not in room")
+        user_id = requester.user.to_string()
+        await self.api.is_user_admin(user_id)
 
         access_type = await self.store.db_pool.runInteraction(
             "get_room_access_type",
@@ -696,7 +689,6 @@ class RoomService:
             room_id,
         )
 
-        # envia tombstone PRIMEIRO
         await self._admin_send_state(
             room_id,
             "m.room.tombstone",
@@ -707,7 +699,6 @@ class RoomService:
             },
         )
 
-        # agora pode kickar os outros
         for member in members:
             if member == user_id:
                 continue
@@ -717,7 +708,6 @@ class RoomService:
                 reason="Room deleted",
             )
 
-        # requester sai por último
         await self._leave_room(room_id, requester)
 
 
