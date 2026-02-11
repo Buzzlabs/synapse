@@ -1,51 +1,227 @@
-# Room Service Module 
+# Room Service Module for Matrix Synapse
 
-Custom Synapse module responsible for managing discoverable rooms, including 
-- public room list (discover)
-- joining rooms via keyword (invite)
-- room creation (create - WIP)
+This module implements a custom room management service for Matrix Synapse.
 
-## Endpoints
+It exposes a set of **authenticated HTTP endpoints** that allow external systems
+(frontend, admin panels or backend services) to **discover, create and manage rooms**
+with additional **business rules** such as visibility, access type, pricing and keywords.
 
-Discover Rooms: GET /_synapse/room_service/discover
-    response: 
-        {
-            "rooms": [
-                {
-                "room_id": "!abc:localhost",
-                "name": "Public Room",
-                "room_kind": "group",
-                "access_type": "free",
-                "price": 0,
-                "keyword": "buzz",
-                "member_count": 12
-                }
-            ]
-        }
+The module integrates directly with Synapse internals and uses the **admin API**
+to perform privileged operations.
 
-Join Room (by keyword): POST /_synapse/room_service/invite
-    body: 
-        {
-            "keyword": "buzz"
-        }
-    response:
-        {
-            "joined": true
-        }
+---
 
-Create Room (WIP): ---
+## Features
 
-## Configuration (homeserver.yaml)
+This module allows Synapse to:
 
+- expose custom REST endpoints for room management
+- discover visible rooms with metadata
+- create rooms with business configuration
+- join users to rooms using keywords
+- control room visibility (public / private)
+- manage paid and free rooms
+- change access type dynamically
+- safely delete rooms
+- enforce admin-only operations
+
+---
+
+## How it works
+
+1. Synapse loads the module on startup
+2. The module initializes a `RoomService`
+3. Custom HTTP endpoints are registered under:
+   /\_synapse/room_service/\*
+4. External clients call these endpoints
+5. The module:
+   - validates permissions
+   - applies business rules
+   - interacts with Synapse APIs
+   - persists metadata in the database
+
+---
+
+## Registered endpoints
+
+All endpoints are exposed under:
+
+- /\_synapse/room_service/discover
+- /\_synapse/room_service/invite
+- /\_synapse/room_service/create
+- /\_synapse/room_service/is_admin
+- /\_synapse/room_service/changevisibility
+- /\_synapse/room_service/getvisibility
+- /\_synapse/room_service/changeaccesstype
+- /\_synapse/room_service/deleteroom
+
+---
+
+### Discover rooms
+
+GET /discover
+
+Returns a list of visible rooms with metadata.
+
+**Response fields:**
+
+- `room_id`
+- `name`
+- `room_kind`
+- `access_type`
+- `price`
+- `keyword`
+- `member_count`
+
+Only rooms where the **admin user is a member** are returned.
+
+---
+
+### Join room by keyword
+
+POST /invite
+
+Joins a user to a room using a keyword.
+
+**Behavior:**
+
+- finds the room associated with the keyword
+- performs an admin join
+- adds the target user to the room
+
+**Errors:**
+
+- `404` – room not found
+- `500` – admin join failed
+
+---
+
+### Create room
+
+POST /create
+
+Creates a new room with business metadata.
+
+**Requirements:**
+
+- requester must be a Synapse admin
+- `keyword` must be unique
+
+**Behavior:**
+
+- creates the room
+- sets initial power levels
+- stores metadata in the database
+- ensures the admin user joins the room
+- configures join rules based on access type
+
+---
+
+### Change room visibility
+
+POST /changevisibility
+
+Updates the visibility and price of a room.
+
+**Rules:**
+
+- invisible rooms always have `price = 0`
+- private visible rooms require a price
+- public rooms cannot have a price
+
+---
+
+### Get room visibility
+
+GET /getvisibility
+
+Returns the current visibility configuration.
+
+**Response fields:**
+
+- `visible`
+- `price`
+- `access_type`
+
+---
+
+### Change room price
+
+POST /changeprice
+
+Updates the price of a room.
+
+**Rules:**
+
+- only allowed for visible rooms
+- private rooms require `price > 0`
+- public rooms must have `price = 0`
+
+Admin-only operation.
+
+---
+
+### Change access type
+
+POST /changeaccesstype
+
+Changes the room access type.
+
+**Supported values:**
+
+- `public`
+- `private`
+
+**Behavior:**
+
+- public → private may assign a default price
+- private → public forces `price = 0`
+
+Admin-only operation.
+
+---
+
+### Delete room
+
+POST /deleteroom
+
+Deletes a room safely.
+
+**Process:**
+
+1. validates admin permissions
+2. sends `m.room.tombstone`
+3. kicks all members
+4. removes business metadata
+5. requester leaves the room last
+
+The room is marked as deleted but remains in Synapse history.
+
+---
+
+## Business metadata
+
+The module stores additional room metadata, including:
+
+- `keyword`
+- `visible`
+- `access_type`
+- `price`
+- `room_kind`
+
+This data is persisted using custom database helpers.
+
+---
+
+## Configuration
+
+Example `homeserver.yaml` configuration:
+
+```yaml
 modules:
   - module: modules.room_service.module.RoomServiceModule
     config:
-      admin_user_id: "@admin:localhost"
-      admin_token: "YOUR_ADMIN_TOKEN"
-      homeserver: "http://homeserver"
-
-## Notes
-
-- the admin user is force-joined into discoverable rooms
-- member_count reflects real joined users
-- keyword is public entry key for the rooms
+      admin_user_id: "@admin:example.com"
+      admin_token: "SYNAPSE_ADMIN_TOKEN"
+      homeserver: "https://matrix.example.com"
+```
