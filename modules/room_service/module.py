@@ -1,6 +1,7 @@
 # module.py
 import logging
 
+from synapse.api.errors import SynapseError
 from synapse.module_api import ModuleApi
 
 from .service import RoomService
@@ -29,6 +30,11 @@ class RoomServiceModule:
             admin_token=admin_token,
             homeserver=homeserver,
         )
+
+        api.register_third_party_rules_callbacks(
+            check_event_allowed=self.check_event_allowed,
+        )
+
 
         api.register_web_resource(
             "/_synapse/room_service/discover",
@@ -74,3 +80,16 @@ class RoomServiceModule:
             "/_synapse/room_service/deleteroom",
             DeleteRoomResource(api, service),
         )
+        
+    async def check_event_allowed(
+        self,
+        event,
+        state_events,
+    ):
+        if event.type == "m.room.create":
+            room_type = event.content.get("type")
+
+            if room_type == "m.space":
+                raise SynapseError(403, "Spaces não são permitidos.")
+
+        return True, None
