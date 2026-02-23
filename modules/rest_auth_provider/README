@@ -113,3 +113,28 @@ password_providers:
     config:
       api_base: "https://example.paywall.com"
 ```
+
+## Known Limitation: Localpart Collision
+
+The Matrix localpart is currently generated from:
+- first_name + last_name, or
+- the email local part (portion before @)
+
+This may lead to localpart collisions.
+For example:
+- alice@gmail.com
+- alice@yahoo.com
+
+Both users would generate the same Matrix localpart: alice.
+
+A hash-based approach using the external user ID was previously considered (see the commented-out ID hash around line 141), which indicates that uniqueness was originally intended. However, this logic is currently disabled.
+
+### Current Status
+
+This limitation is known and acknowledged.
+At this stage, the module is intended for internal use only, where:
+- the authentication backend is controlled,
+- user identity domains are restricted,
+- and email collisions are not expected.
+
+Because of this controlled environment, the issue will not be addressed immediately.
