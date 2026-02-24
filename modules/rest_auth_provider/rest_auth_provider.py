@@ -20,7 +20,7 @@ class RestAuthProvider:
 
     def __init__(self, config, account_handler):
         self.account_handler = account_handler
-
+        self.http_client = account_handler._hs.get_proxied_http_client()
         self.api_base = config["api_base"]
         self.check_endpoint = "/public/authenticate"
 
@@ -52,7 +52,7 @@ class RestAuthProvider:
 
         logger.info("Login request email=%s", email)
 
-        data = self._check_paywall(email, password)
+        data = await self._check_paywall(email, password)
 
         localpart = self._build_localpart_from_user(data)
         server_name = self.account_handler._hs.hostname
@@ -65,31 +65,23 @@ class RestAuthProvider:
 
         return (mxid, None)
 
-    def _check_paywall(self, email, password):
+    async def _check_paywall(self, email, password):
         try:
-            resp = requests.post(
+            resp = await self.http_client.post_json_get_json(
                 f"{self.api_base}{self.check_endpoint}",
-                json={
+                {
                     "subscriber-user/email": email,
                     "subscriber-user/password": RestAuthProvider.hash_password(password),
                 },
-
-                timeout=self.timeout,
             )
         except Exception as e:
             logger.error("Error calling paywall: %s", e)
-            raise AuthError(500, "Authentication service error")
-
-        if resp.status_code != 200:
             raise AuthError(403, "Invalid credentials")
 
-        data = resp.json()
-
-        if not isinstance(data, dict) or "email" not in data:
+        if not isinstance(resp, dict) or "email" not in resp:
             raise AuthError(403, "Invalid response from the paywall")
 
-        return data
-
+        return resp
  
     async def _ensure_user_exists(self, mxid: str):
         if await self.account_handler.check_user_exists(mxid):
