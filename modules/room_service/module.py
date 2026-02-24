@@ -6,7 +6,6 @@ from synapse.module_api import ModuleApi
 from .service import RoomService
 from .resources.discover import DiscoverRoomResource
 from .resources.invite import InviteRoomResource
-from .resources.create import CreateRoomResource
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +32,4 @@ class RoomServiceModule:
             InviteRoomResource(api, service),
         )
 
-        api.register_web_resource(
-            "/_synapse/room_service/create",
-            CreateRoomResource(api, service),
-        )
+     
