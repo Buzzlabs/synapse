@@ -4,16 +4,11 @@ from unittest.mock import MagicMock, AsyncMock
 from synapse.api.errors import SynapseError
 from modules.room_service.service import RoomService
 
-#testa: 
-# 1. busca a sala correta no banco usando keyword
-# 2. recusa keyword inexistente com erro 401
-# 3. chama o endpoint de admin join do synapse
-# 4. transforma erro do synapse em erro do domínio
-
-# para testar: PYTHONPATH=. pytest modules/room_service/tests/test_room_service_join_by_keyword.py -vv
-
 @pytest.mark.asyncio
 async def test_join_by_keyword_room_not_found():
+    """
+    Deve retornar 404 quando keyword não existe.
+    """
     api = MagicMock()
     hs = MagicMock()
     api._hs = hs
@@ -43,21 +38,18 @@ async def test_join_by_keyword_success():
     hs = MagicMock()
     api._hs = hs
 
-    # mock do banco
     store = MagicMock()
     store.db_pool.runInteraction = AsyncMock(
         return_value=("!roomid:localhost",)
     )
     hs.get_datastores.return_value.main = store
 
-    # mock do HTTP agent
     agent = MagicMock()
     response = MagicMock()
     response.code = 200
 
     agent.request = AsyncMock(return_value=response)
 
-    # mock readBody
     from modules.room_service import service as service_module
     service_module.readBody = AsyncMock(return_value=b"{}")
 
@@ -79,6 +71,9 @@ async def test_join_by_keyword_success():
 
 @pytest.mark.asyncio
 async def test_join_by_keyword_admin_join_fails():
+    """
+    Deve retornar erro quando endpoint admin join falha.
+    """
     api = MagicMock()
     hs = MagicMock()
     api._hs = hs
