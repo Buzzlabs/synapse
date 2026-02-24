@@ -53,18 +53,31 @@ class RoomService:
 
     # ---------------- DISCOVER ----------------
     async def discover(self):
+        logger.info("discover: start fetching visible rooms")
         rows = await self.store.db_pool.runInteraction(
             "get_visible_rooms",
             db.get_visible_rooms,
         )
 
+        logger.info("discover: %d visible rooms found in DB", len(rows))
         rooms = []
 
         for room_id, room_kind, access_type, price, keyword in rows:
-            # garante admin na sala
-            await self._ensure_admin(room_id)
+            logger.debug(
+                "discover: processing room_id=%s kind=%s access=%s visible_price=%s keyword=%s",
+                room_id,
+                room_kind,
+                access_type,
+                price,
+                keyword,
+            )
+            if not await self._is_user_in_room(room_id, self.admin_user_id):
+                logger.debug(
+                    "discover: skipping room_id=%s (admin not in room)",
+                    room_id,
+                )
+                continue
 
-            # -------- nome da sala --------
             state_events = await self.api.get_state_events_in_room(
                 room_id,
                 [("m.room.name", "")]
@@ -75,10 +88,15 @@ class RoomService:
                 name = ev.content.get("name", "Sem nome")
                 break
 
-            # -------- member count --------
             users = await self.store.get_users_in_room(room_id)
             member_count = len(users)
 
+            logger.debug(
+                "discover: room_id=%s name='%s' members=%d",
+                room_id,
+                name,
+                member_count,
+            )
             rooms.append({
                 "room_id": room_id,
                 "name": name,
@@ -89,26 +107,31 @@ class RoomService:
                 "member_count": member_count,
             })
 
-        return rooms
-
-    # ---------------- INVITE ----------------
-    async def join_by_keyword(self, target_user_id: str, keyword: str):
-        row = await self.store.db_pool.runInteraction(
-            "get_room_by_keyword",
-            lambda txn: (
-                txn.execute(
-                    """
-                    SELECT room_id
-                    FROM room_business
-                    WHERE keyword = %s AND visible = TRUE
-                    """,
-                    (keyword,),
-                ),
-                txn.fetchone(),
-            )[1],
+        logger.info(
+            "discover: finished, %d rooms returned",
+            len(rooms),
         )
 
+        return rooms
+    # ---------------- INVITE ----------------
+    async def join_by_keyword(self, target_user_id: str, keyword: str):
+        logger.info(
+            "join_by_keyword: start target=%s keyword=%s",
+            target_user_id,
+            keyword,
+        )
+        row = await self.store.db_pool.runInteraction(
+            "get_room_by_keyword",
+            db.get_room_by_keyword,
+            keyword,
+        )
+
+
         if not row:
+            logger.warning(
+                "join_by_keyword: no room found for keyword=%s",
+                keyword,
+            )
             raise SynapseError(404, "Room not found")
 
         room_id = row[0]
@@ -126,6 +149,11 @@ class RoomService:
 
         payload = json.dumps({"user_id": target_user_id}).encode()
 
+        logger.debug(
+            "join_by_keyword: sending admin join request user=%s room_id=%s",
+            target_user_id,
+            room_id,
+        )
         response = await self.agent.request(
             b"POST",
             url.encode(),
@@ -151,10 +179,12 @@ class RoomService:
             target_user_id,
             room_id,
         )
+    
 
     # ---------------- INTERNAL ----------------
     async def _ensure_admin(self, room_id: str):
         try:
+
             await self._admin_join(room_id, self.admin_user_id)
         except SynapseError as e:
             if e.code != 403:
@@ -187,3 +217,6 @@ class RoomService:
                 body.decode(errors="ignore"),
             )
 
+    async def _is_user_in_room(self, room_id: str, user_id: str) -> bool:
+        users = await self.store.get_users_in_room(room_id)
+        return user_id in users
