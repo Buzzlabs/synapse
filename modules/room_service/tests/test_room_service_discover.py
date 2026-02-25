@@ -3,22 +3,19 @@ from unittest.mock import AsyncMock, MagicMock
 
 from modules.room_service.service import RoomService
 
-# testa:
-# 1. lista apenas salas visíveis
-# 2. tenta garantir admin em cada sala
-# 3. retorna dados consistentes pra UI
-# 4. calcula corretamente o número de membros
-
-# para testar: PYTHONPATH=. pytest modules/room_service/tests/test_room_service_discover.py -vv
-
 @pytest.mark.asyncio
 async def test_discover_returns_visible_rooms():
+    """
+    Deve retornar sala quando admin está presente.
+    """
     api = MagicMock()
     hs = MagicMock()
     api._hs = hs
 
     store = MagicMock()
-    store.get_users_in_room = AsyncMock(return_value=["u1", "u2", "u3"])
+    store.get_users_in_room = AsyncMock(
+    return_value=["u1", "u2", "u3", "@admin:localhost"]
+)
 
     store.db_pool.runInteraction = AsyncMock(
         return_value=[
@@ -53,8 +50,77 @@ async def test_discover_returns_visible_rooms():
             "access_type": "public",
             "price": None,
             "keyword": "buzz",
-            "member_count": 3,
+            "member_count": 4,
         }
     ]
 
-    service._ensure_admin.assert_awaited_once_with("!room1:localhost")
+@pytest.mark.asyncio
+async def test_discover_skips_when_admin_not_in_room():
+    """
+    Deve ignorar sala se admin não estiver nela.
+    """
+
+    api = MagicMock()
+    hs = MagicMock()
+    api._hs = hs
+
+    store = MagicMock()
+    store.db_pool.runInteraction = AsyncMock(
+        return_value=[
+            ("!room1:localhost", "group", "private", 100, "buzz"),
+        ]
+    )
+    store.get_users_in_room = AsyncMock(
+        return_value=["@user:localhost"]
+    )
+
+    hs.get_datastores.return_value.main = store
+
+    api.get_state_events_in_room = AsyncMock(return_value=[])
+
+    service = RoomService(
+        api=api,
+        admin_user_id="@admin:localhost",
+        admin_token="token",
+        homeserver="http://localhost:8008",
+    )
+
+    rooms = await service.discover()
+
+    assert rooms == []
+
+
+@pytest.mark.asyncio
+async def test_discover_uses_default_name():
+    """
+    Deve usar 'Sem nome' quando sala não possui m.room.name.
+    """
+
+    api = MagicMock()
+    hs = MagicMock()
+    api._hs = hs
+
+    store = MagicMock()
+    store.db_pool.runInteraction = AsyncMock(
+        return_value=[
+            ("!room1:localhost", "group", "private", 100, "buzz"),
+        ]
+    )
+    store.get_users_in_room = AsyncMock(
+        return_value=["@admin:localhost"]
+    )
+
+    hs.get_datastores.return_value.main = store
+
+    api.get_state_events_in_room = AsyncMock(return_value=[])
+
+    service = RoomService(
+        api=api,
+        admin_user_id="@admin:localhost",
+        admin_token="token",
+        homeserver="http://localhost:8008",
+    )
+
+    rooms = await service.discover()
+
+    assert rooms[0]["name"] == "Sem nome"
