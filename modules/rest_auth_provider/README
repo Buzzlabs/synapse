@@ -1,0 +1,140 @@
+# REST Auth Provider for Matrix Synapse
+
+This module implements a custom **password authentication provider**
+for Matrix Synapse using an **external REST API** (paywall / authentication service).
+
+It allows Synapse to:
+
+- authenticate users against an external service
+- automatically create Matrix users on first successful login
+- generate Matrix user IDs based on external user data
+
+This module **does not expose a registration endpoint**.  
+User creation happens implicitly during login if the user does not exist.
+
+---
+
+## How it works
+
+1. Synapse receives a login request using `m.login.password`
+2. Synapse calls `check_auth` on this provider
+3. The provider:
+   - extracts the user email from the login identifier
+   - hashes the password using **SHA-512**
+   - sends the credentials to an external REST API
+   - validates the API response
+   - generates a Matrix localpart
+   - creates the Matrix user if it does not exist
+4. If authentication succeeds, Synapse completes the login flow
+
+---
+
+## Login identifier
+
+The login identifier **must be an email address**.
+
+Examples:
+
+- `user@example.com`
+- `User@Example.com` (normalized internally)
+
+If the identifier is not a valid email address, authentication will be rejected.
+
+---
+
+## External REST API contract
+
+Your authentication backend must expose the following endpoint.
+
+### Endpoint
+
+POST /public/authenticate
+(The base URL is defined by `api_base` in the Synapse configuration.)
+
+---
+
+### Request body
+
+The request body must be JSON, UTF-8 encoded.
+
+The password **must be hashed using SHA-512** before being sent.
+
+```json
+{
+  "subscriber-user/email": "user@example.com",
+  "subscriber-user/password": "<sha512 hex digest>"
+}
+```
+### Successful response
+The API must return HTTP 200 with a JSON object containing
+at least the following fields:
+```
+{
+  "id": "external-user-id",
+  "email": "user@example.com",
+  "info": {
+    "first-name": "Alice",
+    "last-name": "Silva"
+  }
+}
+```
+- email is required
+- id is required only as a validation field
+- the id value is not stored and not used to generate the Matrix user ID
+- info.first-name and info.last-name are optional
+
+### Failed authentication
+Authentication will fail if:
+- credentials are invalid (non-200 HTTP response), or
+- required fields (email, id) are missing or malformed
+In these cases, Synapse will reject the login attempt.
+
+### Matrix user creation
+If authentication succeeds and the Matrix user does not exist:
+- the user is created automatically
+- the Matrix localpart is generated as follows: 
+  - first_last if both first and last name are present
+  - otherwise, the email local part (before @)
+- the localpart is normalized to: 
+  - lowercase
+  - ASCII characters only
+  - non-alphanumeric characters replaced with _
+
+##  Configuration
+
+Example homeserver.yaml configuration:
+``` 
+password_config:
+  enabled: true
+  localdb_enabled: false
+
+password_providers:
+  - module: modules.rest_auth_provider.rest_auth_provider.RestAuthProvider
+    config:
+      api_base: "https://example.paywall.com"
+```
+
+## Known Limitation: Localpart Collision
+
+The Matrix localpart is currently generated from:
+- first_name + last_name, or
+- the email local part (portion before @)
+
+This may lead to localpart collisions.
+For example:
+- alice@gmail.com
+- alice@yahoo.com
+
+Both users would generate the same Matrix localpart: alice.
+
+A hash-based approach using the external user ID was previously considered (see the commented-out ID hash around line 141), which indicates that uniqueness was originally intended. However, this logic is currently disabled.
+
+### Current Status
+
+This limitation is known and acknowledged.
+At this stage, the module is intended for internal use only, where:
+- the authentication backend is controlled,
+- user identity domains are restricted,
+- and email collisions are not expected.
+
+Because of this controlled environment, the issue will not be addressed immediately.

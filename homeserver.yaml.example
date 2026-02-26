@@ -39,24 +39,9 @@ enable_registration: false
 # enable_registration_without_verification: true
 password_config:
   enabled: true
+  localdb_enabled: false
 password_providers:
-  - module: rest_auth_provider.rest_auth_provider.RestAuthProvider
+  - module: modules.rest_auth_provider.rest_auth_provider.RestAuthProvider
     config:
-      endpoint: "http://example.com"
-      regLower: false
-      setNameOnRegister: true
-      setNameOnLogin: true
-      updateThreepid: false
-      replaceThreepid: false
-      policy:
-        registration:
-          username:
-            enforceLowercase: true
-        login:
-          profile:
-            name: false
-        all:
-          threepid:
-            update: false
-            replace: false
+      api_base: "http://0.0.0.0:9000"
 # vim:ft=yaml
