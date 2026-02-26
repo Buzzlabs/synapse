@@ -198,6 +198,13 @@ class RoomService:
             )
             raise SynapseError(400, "Keyword is required")
 
+        if not data.get("name"):
+            logger.warning(
+                "create_room: missing name creator=%s",
+                creator,
+            )
+            raise SynapseError(400, "Name is required")
+        
         exists = await self.store.db_pool.runInteraction(
             "keyword_exists",
             db.keyword_exists,
