@@ -13,6 +13,10 @@ from modules.room_service.resources.is_admin import IsAdminResource
 
 @pytest.mark.asyncio
 async def test_is_admin_resource_returns_true_for_admin():
+    """
+    Should return HTTP 200 with is_admin=True
+    when the authenticated user is an admin.
+    """
     api = MagicMock()
 
     requester = MagicMock()
@@ -37,6 +41,10 @@ async def test_is_admin_resource_returns_true_for_admin():
     
 @pytest.mark.asyncio
 async def test_is_admin_resource_returns_false_for_non_admin():
+    """
+    Should return HTTP 200 with is_admin=False
+    when the authenticated user is not an admin.
+    """
     api = MagicMock()
 
     requester = MagicMock()

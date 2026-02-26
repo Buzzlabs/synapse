@@ -115,7 +115,6 @@ class RoomService:
 
         return rooms
 
-
     # ---------------- INVITE ----------------
     async def join_by_keyword(self, target_user_id: str, keyword: str):
         logger.info(
@@ -128,8 +127,7 @@ class RoomService:
             db.get_room_by_keyword,
             keyword,
         )
-
-
+        
         if not row:
             logger.warning(
                 "join_by_keyword: no room found for keyword=%s",
@@ -885,3 +883,32 @@ class RoomService:
             ratelimit=False,
         )
 
+    async def _admin_join(self, room_id: str, user_id: str):
+        url = (
+            f"{self.homeserver}/_synapse/admin/v1/join/"
+            f"{quote(room_id)}"
+        )
+
+        payload = json.dumps({"user_id": user_id}).encode()
+
+        response = await self.agent.request(
+            b"POST",
+            url.encode(),
+            Headers({
+                b"Authorization": [f"Bearer {self.admin_token}".encode()],
+                b"Content-Type": [b"application/json"],
+            }),
+            bodyProducer=_BodyProducer(payload),
+        )
+
+        body = await readBody(response)
+
+        if response.code not in (200, 403):
+            raise SynapseError(
+                response.code,
+                body.decode(errors="ignore"),
+            )
+
+    async def _is_user_in_room(self, room_id: str, user_id: str) -> bool:
+        users = await self.store.get_users_in_room(room_id)
+        return user_id in users

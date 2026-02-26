@@ -31,6 +31,18 @@ def get_room_by_keyword(txn, keyword: str):
     return txn.fetchone()
 
 
+def get_room_by_keyword(txn, keyword: str):
+    txn.execute(
+        """
+        SELECT room_id
+        FROM room_business
+        WHERE keyword = ? AND visible = TRUE
+        """,
+        (keyword,),
+    )
+    return txn.fetchone()
+
+
 def get_visible_rooms(txn):
     txn.execute(
         """
