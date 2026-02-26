@@ -13,6 +13,9 @@ from modules.room_service.service import RoomService
 
 @pytest.mark.asyncio
 async def test_assert_is_admin_allows_admin():
+    """
+    Should not raise an exception when the user is an admin.
+    """
     api = MagicMock()
     api.is_user_admin = AsyncMock(return_value=True)
 
@@ -28,6 +31,9 @@ async def test_assert_is_admin_allows_admin():
 
 @pytest.mark.asyncio
 async def test_assert_is_admin_blocks_non_admin():
+    """
+    Should raise SynapseError when the user is not an admin.
+    """
     api = MagicMock()
     api.is_user_admin = AsyncMock(return_value=False)
 

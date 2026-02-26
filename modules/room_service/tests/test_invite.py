@@ -8,16 +8,11 @@ from twisted.web.http_headers import Headers
 
 from modules.room_service.resources.invite import InviteRoomResource
 
-# testa:
-# 1. o endpoint /invite funciona como contrato http
-# 2. o resource chama a regra de negócio certa (roomservice.join_by_keyword)
-# 3. erros de domínio viram erros http corretos
-# 4. endpoint independente do synapse
-
-# para testar: PYTHONPATH=. pytest modules/room_service/tests/test_invite.py
-
 @pytest.mark.asyncio
 async def test_invite_room_success():
+    """
+    Deve retornar 200 e lista de salas corretamente formatada.
+    """
     api = MagicMock()
 
     requester = MagicMock()
@@ -52,6 +47,9 @@ async def test_invite_room_success():
 
 @pytest.mark.asyncio
 async def test_invite_room_missing_keyword():
+    """
+    Deve retornar 400 quando keyword não é enviada.
+    """
     api = MagicMock()
     requester = MagicMock()
     requester.user.to_string.return_value = "@alice:localhost"
