@@ -339,7 +339,7 @@ class RoomService:
             price,
         )
         user_id = requester.user.to_string()
-        await self.api.is_user_admin(user_id)
+        await self.assert_is_admin(user_id)
 
         access_type = await self.store.db_pool.runInteraction(
             "get_room_access_type",
@@ -471,7 +471,7 @@ class RoomService:
             price,
         )
 
-        await self.api.is_user_admin(user_id)
+        await self.assert_is_admin(user_id)
 
         row = await self.store.db_pool.runInteraction(
             "get_room_price_info",
@@ -575,7 +575,7 @@ class RoomService:
             price,
         )
 
-        await self.api.is_user_admin(requester.user.to_string())
+        await self.assert_is_admin(requester.user.to_string())
 
         access_type = access_type.lower()
         if access_type not in ("public", "private"):
