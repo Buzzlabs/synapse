@@ -129,3 +129,16 @@ def bundle_exists(txn, bundle_id: str) -> bool:
     )
 
     return txn.fetchone() is not None
+
+# ------------- GET KEYWORD ----------------
+def get_room_business_by_ids(txn, room_ids):
+    if not room_ids:
+        return []
+
+    sql = """
+        SELECT room_id, keyword
+        FROM room_business
+        WHERE room_id = ANY(%s)
+    """
+    txn.execute(sql, (room_ids,))
+    return txn.fetchall()
