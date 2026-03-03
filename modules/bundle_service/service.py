@@ -1,4 +1,5 @@
 # service.py
+
 from . import db
 import logging
 
@@ -9,23 +10,54 @@ class BundleService:
         self.api = api
         self.store = api._hs.get_datastores().main
 
-  # ---------------- LIST BUNDLES ----------------
-    async def list_bundles(self):
-        bundles = await self.store.db_pool.runInteraction(
-            "list_bundles",
-            db.list_bundles,
-        )
+    # ---------------- LIST BUNDLES ----------------
+    async def list_bundles(self, user_id):
+        logger.info("list_bundles: start for user %s", user_id)
+
+        try:
+            bundles = await self.store.db_pool.runInteraction(
+                "list_bundles",
+                db.list_bundles,
+            )
+        except Exception as e:
+            logger.exception("list_bundles: DB error")
+            raise
+
+        logger.info("list_bundles: %d bundles found in DB", len(bundles))
+
+        try:
+            is_admin = await self._is_admin(user_id)
+            logger.info("list_bundles: user %s admin=%s", user_id, is_admin)
+        except Exception:
+            logger.exception("list_bundles: failed to check admin status")
+            is_admin = False
 
         result = []
 
         for bundle in bundles:
-            room_ids = bundle["rooms"]
 
-            room_business_rows = await self.store.db_pool.runInteraction(
-                "get_room_business_by_ids",
-                db.get_room_business_by_ids,
-                room_ids,
-            )
+            if bundle["status"] == "draft":
+                if bundle["created_by"] != user_id and not is_admin:
+                    logger.info(
+                        "list_bundles: skipping draft %s (not owner/admin)",
+                        bundle["bundle_id"],
+                    )
+                    continue
+
+            room_ids = bundle.get("rooms", [])
+
+            try:
+                room_business_rows = await self.store.db_pool.runInteraction(
+                    "get_room_business_by_ids",
+                    db.get_room_business_by_ids,
+                    room_ids,
+                )
+            except Exception:
+                logger.exception(
+                    "list_bundles: failed to fetch room business for bundle %s",
+                    bundle["bundle_id"],
+                )
+                room_business_rows = []
 
             room_keywords = {row[0]: row[1] for row in room_business_rows}
 
@@ -33,7 +65,6 @@ class BundleService:
             keywords = []
 
             for room_id in room_ids:
-
                 try:
                     state_events = await self.api.get_state_events_in_room(
                         room_id,
@@ -46,6 +77,10 @@ class BundleService:
                         break
 
                 except Exception:
+                    logger.warning(
+                        "list_bundles: failed to fetch name for room %s",
+                        room_id,
+                    )
                     name = "Sem nome"
 
                 room_names.append(name)
@@ -59,6 +94,16 @@ class BundleService:
                 "price": bundle["price"],
                 "rooms": room_names,
                 "keywords": keywords,
+                "status": bundle["status"],
             })
 
+        logger.info("list_bundles: finished, %d bundles returned", len(result))
+
         return result
+
+    async def _is_admin(self, user_id: str) -> bool:
+        try:
+            return await self.api.is_user_admin(user_id)
+        except Exception:
+            logger.exception("_is_admin: error checking admin for %s", user_id)
+            return False

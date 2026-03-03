@@ -4,34 +4,37 @@ import uuid
 
 # ---------------- CREATE BUNDLE ----------------
 
-def create_bundle(txn, bundle_name: str, price: float):
+def create_bundle(txn, bundle_name: str, price: int, created_by: str):
     bundle_id = str(uuid.uuid4())
-    now = int(time.time() * 1000)
 
     txn.execute(
         """
         INSERT INTO bundles
-        (bundle_id, bundle_name, price, created_at, updated_at)
-        VALUES (%s, %s, %s, %s, %s)
+        (bundle_id, bundle_name, price, created_by, status)
+        VALUES (%s, %s, %s, %s, 'draft')
         """,
         (
             bundle_id,
             bundle_name,
             price,
-            now,
-            now,
+            created_by,
         ),
     )
 
     return bundle_id
-
 
 # ---------------- LIST BUNDLES ----------------
 
 def list_bundles(txn):
     txn.execute(
         """
-        SELECT b.bundle_id, b.bundle_name, b.price, br.room_id
+        SELECT 
+            b.bundle_id, 
+            b.bundle_name, 
+            b.price,
+            b.status,
+            b.created_by,
+            br.room_id
         FROM bundles b
         LEFT JOIN bundle_rooms br
             ON b.bundle_id = br.bundle_id
@@ -42,12 +45,14 @@ def list_bundles(txn):
     rows = txn.fetchall()
     result = {}
 
-    for bundle_id, name, price, room_id in rows:
+    for bundle_id, name, price, status, created_by, room_id in rows:
         if bundle_id not in result:
             result[bundle_id] = {
                 "bundle_id": bundle_id,
                 "bundle_name": name,
-                "price": float(price),
+                "price": int(price),
+                "status": status,
+                "created_by": created_by,
                 "rooms": [],
             }
 
@@ -55,7 +60,6 @@ def list_bundles(txn):
             result[bundle_id]["rooms"].append(room_id)
 
     return list(result.values())
-
 
 # ---------------- ADD ROOMS ----------------
 
@@ -73,20 +77,17 @@ def add_rooms_to_bundle(txn, bundle_id: str, room_ids: list):
 
 # ---------------- UPDATE ----------------
 
-def update_bundle(txn, bundle_id: str, bundle_name: str, price: float):
-    now = int(time.time() * 1000)
-
+def update_bundle(txn, bundle_id: str, bundle_name: str, price: int):
     txn.execute(
         """
         UPDATE bundles
         SET bundle_name = %s,
             price = %s,
-            updated_at = %s
+            updated_at = now()
         WHERE bundle_id = %s
         """,
-        (bundle_name, price, now, bundle_id),
+        (bundle_name, price, bundle_id),
     )
-
 
 # ---------------- DELETE ----------------
 
