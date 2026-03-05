@@ -5,7 +5,7 @@ from synapse.module_api import ModuleApi
 
 from .service import BundleService
 from .resources.list import ListBundlesResource
-# from .resources.create import CreateBundleResource
+from .resources.create import CreateBundleResource
 # from .resources.add_rooms import AddRoomsResource
 # from .resources.update import UpdateBundleResource
 # from .resources.delete import DeleteBundleResource
@@ -21,14 +21,14 @@ class BundleServiceModule:
         service = BundleService(api)
 
         api.register_web_resource(
-            "/_synapse/bundles",
+            "/_synapse/bundles/list",
             ListBundlesResource(api, service),
         )
 
-        # api.register_web_resource(
-        #     "/_synapse/bundles/create",
-        #     CreateBundleResource(api, service),
-        # )
+        api.register_web_resource(
+            "/_synapse/bundles/create",
+            CreateBundleResource(api, service),
+        )
 
         # api.register_web_resource(
         #     "/_synapse/bundles/addrooms",

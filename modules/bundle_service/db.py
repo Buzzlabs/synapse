@@ -1,10 +1,9 @@
-import time
 import uuid
 
 
 # ---------------- CREATE BUNDLE ----------------
 
-def create_bundle(txn, bundle_name: str, price: int, created_by: str):
+def create_bundle(txn, bundle_name: str, price: int, created_by: str, rooms: list):
     bundle_id = str(uuid.uuid4())
 
     txn.execute(
@@ -21,7 +20,19 @@ def create_bundle(txn, bundle_name: str, price: int, created_by: str):
         ),
     )
 
+    # inserir salas se existirem
+    for room_id in rooms:
+        txn.execute(
+            """
+            INSERT INTO bundle_rooms (bundle_id, room_id)
+            VALUES (%s, %s)
+            ON CONFLICT DO NOTHING
+            """,
+            (bundle_id, room_id),
+        )
+
     return bundle_id
+
 
 # ---------------- LIST BUNDLES ----------------
 
@@ -61,6 +72,7 @@ def list_bundles(txn):
 
     return list(result.values())
 
+
 # ---------------- ADD ROOMS ----------------
 
 def add_rooms_to_bundle(txn, bundle_id: str, room_ids: list):
@@ -89,9 +101,19 @@ def update_bundle(txn, bundle_id: str, bundle_name: str, price: int):
         (bundle_name, price, bundle_id),
     )
 
+
 # ---------------- DELETE ----------------
 
 def delete_bundle(txn, bundle_id: str):
+    # apagar primeiro as relações (boa prática mesmo se tiver cascade)
+    txn.execute(
+        """
+        DELETE FROM bundle_rooms
+        WHERE bundle_id = %s
+        """,
+        (bundle_id,),
+    )
+
     txn.execute(
         """
         DELETE FROM bundles
@@ -131,7 +153,9 @@ def bundle_exists(txn, bundle_id: str) -> bool:
 
     return txn.fetchone() is not None
 
+
 # ------------- GET KEYWORD ----------------
+
 def get_room_business_by_ids(txn, room_ids):
     if not room_ids:
         return []
@@ -141,5 +165,6 @@ def get_room_business_by_ids(txn, room_ids):
         FROM room_business
         WHERE room_id = ANY(%s)
     """
+
     txn.execute(sql, (room_ids,))
     return txn.fetchall()

@@ -1,5 +1,7 @@
 # service.py
 
+import uuid
+
 from . import db
 import logging
 
@@ -107,3 +109,40 @@ class BundleService:
         except Exception:
             logger.exception("_is_admin: error checking admin for %s", user_id)
             return False
+    
+
+    # ---------------- CREATE BUNDLES ----------------
+    async def create_bundle(self, bundle_name, price, created_by, rooms):
+        logger.info(
+            "create_bundle: start | name=%s | price=%s | created_by=%s | rooms_count=%d",
+            bundle_name,
+            price,
+            created_by,
+            len(rooms) if rooms else 0,
+        )
+
+        try:
+            bundle_id = await self.store.db_pool.runInteraction(
+                "create_bundle",
+                db.create_bundle,
+                bundle_name,
+                price,
+                created_by,
+                rooms,
+            )
+
+            logger.info(
+                "create_bundle: success | bundle_id=%s | created_by=%s",
+                bundle_id,
+                created_by,
+            )
+
+            return bundle_id
+
+        except Exception as e:
+            logger.exception(
+                "create_bundle: failed | name=%s | created_by=%s",
+                bundle_name,
+                created_by,
+            )
+            raise
