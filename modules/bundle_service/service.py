@@ -2,6 +2,8 @@
 
 import uuid
 
+from synapse.api.errors import SynapseError
+
 from . import db
 import logging
 
@@ -146,3 +148,35 @@ class BundleService:
                 created_by,
             )
             raise
+        
+    # ---------------- PUBLISH BUNDLES ----------------
+    async def publish_bundle(self, bundle_id: str, user_id: str):
+        logger.info("Publishing bundle %s", bundle_id)
+
+        is_admin = await self._is_admin(user_id)
+
+        if not is_admin:
+            logger.warning(
+                "publish_bundle: permission denied | user=%s | bundle_id=%s",
+                user_id,
+                bundle_id,
+            )
+            raise SynapseError(403, "Only admins can publish bundles")
+
+
+        exists = await self.store.db_pool.runInteraction(
+            "bundle_exists",
+            db.bundle_exists,
+            bundle_id,
+        )
+
+        if not exists:
+            raise SynapseError(404, "Bundle not found")
+
+        await self.store.db_pool.runInteraction(
+            "publish_bundle",
+            db.publish_bundle,
+            bundle_id,
+        )
+
+        return {"status": "published"}
