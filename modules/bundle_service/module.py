@@ -8,7 +8,7 @@ from .resources.list import ListBundlesResource
 from .resources.create import CreateBundleResource
 from .resources.publish import PublishResource
 # from .resources.update import UpdateBundleResource
-# from .resources.delete import DeleteBundleResource
+from .resources.delete import DeleteBundleResource
 # from .resources.activate import ActivateBundleResource
 
 logger = logging.getLogger(__name__)
@@ -40,9 +40,9 @@ class BundleServiceModule:
         #     UpdateBundleResource(api, service),
         # )
 
-        # api.register_web_resource(
-        #     "/_synapse/bundles/delete",
-        #     DeleteBundleResource(api, service),
-        # )
+        api.register_web_resource(
+            "/_synapse/bundles/delete",
+            DeleteBundleResource(api, service),
+        )
 
       
