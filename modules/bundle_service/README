@@ -1,0 +1,232 @@
+# Bundle Module
+
+## Overview
+
+The **Bundle Module** implements a system of **room packages (bundles)**.
+A bundle represents a group of rooms that can be offered together within the platform.
+
+Each bundle contains:
+
+* name
+* price
+* list of associated rooms
+* publication status
+
+Currently, the module implements **database modeling and bundle listing**.
+
+---
+
+# Objective
+
+Allow administrators to create and manage **room packages**, enabling future features such as:
+
+* selling bundles
+* grouped access to multiple rooms
+* automated invitation distribution
+
+At the moment, the system already supports:
+
+* database structure for bundles
+* association between bundles and rooms
+* bundle listing with visibility control
+
+---
+
+# Database Modeling
+
+## `bundles` table
+
+Stores the main information about each bundle.
+
+| Field       | Type      | Description                            |
+| ----------- | --------- | -------------------------------------- |
+| bundle_id   | uuid      | Unique bundle identifier               |
+| bundle_name | text      | Bundle name                            |
+| price       | int       | Bundle price stored in cents           |
+| created_at  | timestamp | Creation timestamp                     |
+| updated_at  | timestamp | Last update timestamp                  |
+| created_by  | text      | User who created the bundle            |
+| status      | text      | Bundle status (`draft` or `published`) |
+
+### Rules
+
+* Every bundle is created with status **draft**
+* Only **published** bundles are publicly visible
+
+---
+
+## `bundle_rooms` table
+
+Defines the relationship between bundles and the rooms included in the package.
+
+| Field     | Type | Description                  |
+| --------- | ---- | ---------------------------- |
+| bundle_id | uuid | Associated bundle            |
+| room_id   | text | Room belonging to the bundle |
+
+### Characteristics
+
+* composite primary key (`bundle_id`, `room_id`)
+* foreign key referencing `bundles`
+* automatic cleanup using `ON DELETE CASCADE`
+
+---
+
+# Bundle Listing
+
+Bundles are listed using the method:
+
+```
+BundleService.list_bundles(user_id)
+```
+
+This method returns the bundles available for a specific user.
+
+---
+
+# Visibility Rules
+
+Bundles with status **published**
+→ visible to all users
+
+Bundles with status **draft**
+→ visible only to:
+
+* the bundle creator
+* system administrators
+
+---
+
+# Listing Flow
+
+1. Fetch all bundles from the database
+2. Check whether the user is an administrator
+3. For each bundle found:
+
+### Access validation
+
+* If the bundle is `draft`, verify permissions
+
+### Fetch room data
+
+* retrieve associated `room_ids`
+* fetch keywords associated with each room
+* fetch the room name using the Matrix state event:
+
+```
+m.room.name
+```
+
+### Build the final response
+
+Each bundle returns:
+
+* bundle_id
+* bundle_name
+* price
+* rooms (room names)
+* keywords
+* status
+
+---
+
+# Response Structure
+
+Example response:
+
+```json
+[
+  {
+    "bundle_id": "bundle1",
+    "bundle_name": "Music Bundle",
+    "price": 1000,
+    "rooms": [
+      "Jazz Room",
+      "Rock Room"
+    ],
+    "keywords": [
+      "music",
+      "radio"
+    ],
+    "status": "published"
+  }
+]
+```
+
+---
+
+# Error Handling
+
+The service includes handling for:
+
+* database access failures
+* admin permission verification failures
+* failures when retrieving room events
+
+If the room name cannot be retrieved, the system uses the default value:
+
+```
+"Unnamed"
+```
+
+---
+
+# Logging
+
+The module uses logging to assist with debugging and observability.
+
+Logged events include:
+
+* start of the listing execution
+* number of bundles found
+* bundles skipped due to permission rules
+* database or API failures
+* completion of the listing process
+
+---
+
+# Code Structure
+
+```
+modules/
+  bundle_service/
+    service.py
+    db.py
+    resources/
+    tests/
+```
+
+* **service.py** → bundle business logic
+* **db.py** → database queries
+* **tests/** → automated tests
+
+---
+
+# Tests
+
+Tests are implemented using:
+
+* pytest
+* pytest-asyncio
+* unittest.mock
+
+To run the tests:
+
+```
+python -m pytest modules/bundle_service/tests -vv
+```
+
+---
+
+# Upcoming Features
+
+Planned next steps for this module include:
+
+* bundle creation
+* bundle publishing
+* bundle editing
+* bundle deletion
+* bundle purchase flow
+* automatic room invitations after payment
+
+These features are currently under development.
