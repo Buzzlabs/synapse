@@ -427,6 +427,141 @@ These logs help track administrative actions and identify issues during bundle m
 
 ---
 
+# Bundle Deletion
+
+Bundles can be deleted through the method:
+
+```
+BundleService.delete_bundle(bundle_id, user_id)
+```
+
+This method is responsible for permanently removing a bundle from the system.
+
+When a bundle is deleted, its associated room relationships are also removed automatically due to the database **foreign key constraint with `ON DELETE CASCADE`**.
+
+---
+
+# Deletion Rules
+
+Bundle deletion follows strict permission and validation rules:
+
+* Only **administrators** are allowed to delete bundles.
+* The bundle **must exist** in the database before it can be deleted.
+
+If these conditions are satisfied, the bundle is removed from the database.
+
+---
+
+# Deletion Flow
+
+1. Receive the deletion request with:
+
+   * `bundle_id`
+   * `user_id`
+
+2. Log the deletion attempt.
+
+3. Verify whether the user is an administrator.
+
+The system calls:
+
+```
+_is_admin(user_id)
+```
+
+If the user is **not an admin**, the process is interrupted and a permission error is raised.
+
+4. Verify that the bundle exists in the database.
+
+The system performs a database interaction:
+
+```
+bundle_exists(bundle_id)
+```
+
+If the bundle is not found, the system raises a **404 error**.
+
+5. Delete the bundle from the database.
+
+If the bundle exists, the database interaction responsible for deletion is executed:
+
+```
+delete_bundle(bundle_id)
+```
+
+This removes the bundle from the **bundles** table.
+
+6. Remove bundle-room associations.
+
+Because the `bundle_rooms` table references `bundles` with a foreign key constraint using:
+
+```
+ON DELETE CASCADE
+```
+
+all room associations related to the bundle are automatically deleted.
+
+7. Return the deletion result.
+
+---
+
+# Response Structure
+
+Example response returned after a successful deletion:
+
+```json
+{
+  "status": "deleted"
+}
+```
+
+This confirms that the bundle has been successfully removed from the system.
+
+---
+
+# Error Handling
+
+The deletion process includes handling for several error scenarios.
+
+### Permission Errors
+
+If a non-admin user attempts to delete a bundle, the system raises:
+
+```
+403 - Only admins can delete bundles
+```
+
+### Bundle Not Found
+
+If the provided `bundle_id` does not exist in the database, the system raises:
+
+```
+404 - Bundle not found
+```
+
+### Database Failures
+
+If the database interaction fails during the deletion operation, the exception is propagated to the caller and logged for debugging.
+
+---
+
+# Logging
+
+The deletion process logs important events to support debugging and observability.
+
+Logged events include:
+
+* start of the deletion process
+* bundle ID being deleted
+* user attempting the deletion
+* permission denial attempts
+* bundle not found errors
+* successful bundle deletion
+
+These logs help track administrative actions and ensure transparency in bundle management.
+
+---
+
 # Upcoming Features
 
 Planned next steps for this module include:
