@@ -12,7 +12,7 @@ Each bundle contains:
 * list of associated rooms
 * publication status
 
-Currently, the module implements **database modeling and bundle listing**.
+Currently, the module implements **database modeling, bundle listing and bundle creation**.
 
 ---
 
@@ -185,36 +185,114 @@ Logged events include:
 
 ---
 
-# Code Structure
+# Bundle Creation
+
+Bundles can be created through the method:
 
 ```
-modules/
-  bundle_service/
-    service.py
-    db.py
-    resources/
-    tests/
+BundleService.create_bundle(bundle_name, price, created_by, rooms)
 ```
 
-* **service.py** → bundle business logic
-* **db.py** → database queries
-* **tests/** → automated tests
+This method is responsible for inserting a new bundle in the database and associating it with multiple rooms.
 
 ---
 
-# Tests
+# Creation Rules
 
-Tests are implemented using:
+Bundle creation follows these rules:
 
-* pytest
-* pytest-asyncio
-* unittest.mock
+* The request must include:
 
-To run the tests:
+  * `bundle_name`
+  * `price`
+  * `rooms` (list of room IDs)
+  * `created_by` (user creating the bundle)
+
+* The bundle price is stored as an **integer representing cents** to avoid floating-point precision issues.
+
+* Every bundle is created with the status:
 
 ```
-python -m pytest modules/bundle_service/tests -vv
+draft
 ```
+
+Draft bundles are **not publicly visible** and are only accessible to:
+
+* the bundle creator
+* system administrators
+
+---
+
+# Creation Flow
+
+1. Receive the bundle data:
+
+   * `bundle_name`
+   * `price`
+   * `created_by`
+   * `rooms`
+
+2. Execute the database interaction responsible for bundle creation.
+
+3. Insert the bundle into the **bundles** table.
+
+The following fields are stored:
+
+* `bundle_id`
+* `bundle_name`
+* `price`
+* `created_by`
+* `status = draft`
+
+4. Associate rooms with the bundle.
+
+Each provided `room_id` is inserted into the **bundle_rooms** table.
+
+To avoid duplicate associations, the query uses:
+
+```
+ON CONFLICT DO NOTHING
+```
+
+5. Return the generated `bundle_id`.
+
+---
+
+# Response Structure
+
+Example response returned by the API resource:
+
+```json
+{
+  "bundle_id": "7d4f6f1e-5a2b-4c1f-b1b5-6c1a2f4a9c01",
+  "status": "draft"
+}
+```
+
+---
+
+# Error Handling
+
+The service includes handling for:
+
+* database execution failures
+* unexpected exceptions during bundle creation
+
+If an error occurs during the database interaction, it is logged and propagated to the caller.
+
+---
+
+# Logging
+
+The creation process logs important events to help with debugging and observability.
+
+Logged events include:
+
+* start of bundle creation
+* bundle name and creator
+* number of rooms associated with the bundle
+* successful bundle creation with generated `bundle_id`
+* database or execution failures
 
 ---
 
@@ -222,7 +300,6 @@ python -m pytest modules/bundle_service/tests -vv
 
 Planned next steps for this module include:
 
-* bundle creation
 * bundle publishing
 * bundle editing
 * bundle deletion
@@ -230,3 +307,4 @@ Planned next steps for this module include:
 * automatic room invitations after payment
 
 These features are currently under development.
+
