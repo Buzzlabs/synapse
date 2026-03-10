@@ -1,0 +1,440 @@
+# Bundle Module
+
+## Overview
+
+The **Bundle Module** implements a system of **room packages (bundles)**.
+A bundle represents a group of rooms that can be offered together within the platform.
+
+Each bundle contains:
+
+* name
+* price
+* list of associated rooms
+* publication status
+
+Currently, the module implements **database modeling, bundle listing, bundle creation and bunlde publish**.
+
+---
+
+# Objective
+
+Allow administrators to create and manage **room packages**, enabling future features such as:
+
+* selling bundles
+* grouped access to multiple rooms
+* automated invitation distribution
+
+At the moment, the system already supports:
+
+* database structure for bundles
+* association between bundles and rooms
+* bundle listing with visibility control
+
+---
+
+# Database Modeling
+
+## `bundles` table
+
+Stores the main information about each bundle.
+
+| Field       | Type      | Description                            |
+| ----------- | --------- | -------------------------------------- |
+| bundle_id   | uuid      | Unique bundle identifier               |
+| bundle_name | text      | Bundle name                            |
+| price       | int       | Bundle price stored in cents           |
+| created_at  | timestamp | Creation timestamp                     |
+| updated_at  | timestamp | Last update timestamp                  |
+| created_by  | text      | User who created the bundle            |
+| status      | text      | Bundle status (`draft` or `published`) |
+
+### Rules
+
+* Every bundle is created with status **draft**
+* Only **published** bundles are publicly visible
+
+---
+
+## `bundle_rooms` table
+
+Defines the relationship between bundles and the rooms included in the package.
+
+| Field     | Type | Description                  |
+| --------- | ---- | ---------------------------- |
+| bundle_id | uuid | Associated bundle            |
+| room_id   | text | Room belonging to the bundle |
+
+### Characteristics
+
+* composite primary key (`bundle_id`, `room_id`)
+* foreign key referencing `bundles`
+* automatic cleanup using `ON DELETE CASCADE`
+
+---
+
+# Bundle Listing
+
+Bundles are listed using the method:
+
+```
+BundleService.list_bundles(user_id)
+```
+
+This method returns the bundles available for a specific user.
+
+---
+
+# Visibility Rules
+
+Bundles with status **published**
+→ visible to all users
+
+Bundles with status **draft**
+→ visible only to:
+
+* the bundle creator
+* system administrators
+
+---
+
+# Listing Flow
+
+1. Fetch all bundles from the database
+2. Check whether the user is an administrator
+3. For each bundle found:
+
+### Access validation
+
+* If the bundle is `draft`, verify permissions
+
+### Fetch room data
+
+* retrieve associated `room_ids`
+* fetch keywords associated with each room
+* fetch the room name using the Matrix state event:
+
+```
+m.room.name
+```
+
+### Build the final response
+
+Each bundle returns:
+
+* bundle_id
+* bundle_name
+* price
+* rooms (room names)
+* keywords
+* status
+
+---
+
+# Response Structure
+
+Example response:
+
+```json
+[
+  {
+    "bundle_id": "bundle1",
+    "bundle_name": "Music Bundle",
+    "price": 1000,
+    "rooms": [
+      "Jazz Room",
+      "Rock Room"
+    ],
+    "keywords": [
+      "music",
+      "radio"
+    ],
+    "status": "published"
+  }
+]
+```
+
+---
+
+# Error Handling
+
+The service includes handling for:
+
+* database access failures
+* admin permission verification failures
+* failures when retrieving room events
+
+If the room name cannot be retrieved, the system uses the default value:
+
+```
+"Unnamed"
+```
+
+---
+
+# Logging
+
+The module uses logging to assist with debugging and observability.
+
+Logged events include:
+
+* start of the listing execution
+* number of bundles found
+* bundles skipped due to permission rules
+* database or API failures
+* completion of the listing process
+
+---
+
+# Bundle Creation
+
+Bundles can be created through the method:
+
+```
+BundleService.create_bundle(bundle_name, price, created_by, rooms)
+```
+
+This method is responsible for inserting a new bundle in the database and associating it with multiple rooms.
+
+---
+
+# Creation Rules
+
+Bundle creation follows these rules:
+
+* The request must include:
+
+  * `bundle_name`
+  * `price`
+  * `rooms` (list of room IDs)
+  * `created_by` (user creating the bundle)
+
+* The bundle price is stored as an **integer representing cents** to avoid floating-point precision issues.
+
+* Every bundle is created with the status:
+
+```
+draft
+```
+
+Draft bundles are **not publicly visible** and are only accessible to:
+
+* the bundle creator
+* system administrators
+
+---
+
+# Creation Flow
+
+1. Receive the bundle data:
+
+   * `bundle_name`
+   * `price`
+   * `created_by`
+   * `rooms`
+
+2. Execute the database interaction responsible for bundle creation.
+
+3. Insert the bundle into the **bundles** table.
+
+The following fields are stored:
+
+* `bundle_id`
+* `bundle_name`
+* `price`
+* `created_by`
+* `status = draft`
+
+4. Associate rooms with the bundle.
+
+Each provided `room_id` is inserted into the **bundle_rooms** table.
+
+To avoid duplicate associations, the query uses:
+
+```
+ON CONFLICT DO NOTHING
+```
+
+5. Return the generated `bundle_id`.
+
+---
+
+# Response Structure
+
+Example response returned by the API resource:
+
+```json
+{
+  "bundle_id": "7d4f6f1e-5a2b-4c1f-b1b5-6c1a2f4a9c01",
+  "status": "draft"
+}
+```
+
+---
+
+# Error Handling
+
+The service includes handling for:
+
+* database execution failures
+* unexpected exceptions during bundle creation
+
+If an error occurs during the database interaction, it is logged and propagated to the caller.
+
+---
+
+# Logging
+
+The creation process logs important events to help with debugging and observability.
+
+Logged events include:
+
+* start of bundle creation
+* bundle name and creator
+* number of rooms associated with the bundle
+* successful bundle creation with generated `bundle_id`
+* database or execution failures
+
+---
+
+# Bundle Publishing
+
+Bundles can be published through the method:
+
+```
+BundleService.publish_bundle(bundle_id, user_id)
+```
+
+This method is responsible for changing the bundle status from **draft** to **published**, making the bundle visible to all users in the platform.
+
+---
+
+# Publishing Rules
+
+Bundle publishing follows strict permission and validation rules:
+
+* Only **administrators** are allowed to publish bundles.
+* The bundle **must exist** in the database before it can be published.
+* The bundle status is updated from:
+
+```
+draft → published
+```
+
+Once published, the bundle becomes **publicly visible** to all users when bundles are listed.
+
+---
+
+# Publishing Flow
+
+1. Receive the publishing request with:
+
+   * `bundle_id`
+   * `user_id`
+
+2. Log the publishing attempt.
+
+3. Verify whether the user is an administrator.
+
+The system calls:
+
+```
+_is_admin(user_id)
+```
+
+If the user is **not an admin**, the process is interrupted and a permission error is raised.
+
+4. Verify that the bundle exists in the database.
+
+The system performs a database interaction:
+
+```
+bundle_exists(bundle_id)
+```
+
+If the bundle is not found, the system raises a **404 error**.
+
+5. Update the bundle status.
+
+If the bundle exists, the database interaction responsible for publishing is executed:
+
+```
+publish_bundle(bundle_id)
+```
+
+This updates the bundle status to:
+
+```
+published
+```
+
+6. Return the publishing result.
+
+---
+
+# Response Structure
+
+Example response returned after a successful publication:
+
+```json
+{
+  "status": "published"
+}
+```
+
+This confirms that the bundle is now publicly available.
+
+---
+
+# Error Handling
+
+The publishing process includes handling for several error scenarios.
+
+### Permission Errors
+
+If a non-admin user attempts to publish a bundle, the system raises:
+
+```
+403 - Only admins can publish bundles
+```
+
+### Bundle Not Found
+
+If the provided `bundle_id` does not exist in the database, the system raises:
+
+```
+404 - Bundle not found
+```
+
+### Database Failures
+
+If the database interaction fails during the publishing operation, the exception is propagated to the caller and logged for debugging.
+
+---
+
+# Logging
+
+The publishing process logs important events to support debugging and observability.
+
+Logged events include:
+
+* start of the publishing process
+* bundle ID being published
+* permission denial attempts
+* bundle not found errors
+* successful bundle publication
+
+These logs help track administrative actions and identify issues during bundle management.
+
+---
+
+# Upcoming Features
+
+Planned next steps for this module include:
+
+* bundle editing
+* bundle deletion
+* bundle purchase flow
+* automatic room invitations after payment
+
+These features are currently under development.
+
