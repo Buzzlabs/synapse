@@ -124,7 +124,7 @@ Each bundle returns:
 * bundle_id
 * bundle_name
 * price
-* rooms (room names)
+* rooms (room_id and room name)
 * keywords
 * status
 
@@ -141,9 +141,15 @@ Example response:
     "bundle_name": "Music Bundle",
     "price": 1000,
     "rooms": [
-      "Jazz Room",
-      "Rock Room"
-    ],
+      {
+        "room_id": "!abc:server",
+        "name": "Jazz Room"
+      },
+      {
+        "room_id": "!def:server",
+        "name": "Rock Room"
+      }
+    ]
     "keywords": [
       "music",
       "radio"
@@ -166,7 +172,7 @@ The service includes handling for:
 If the room name cannot be retrieved, the system uses the default value:
 
 ```
-"Unnamed"
+"Sem Nome"
 ```
 
 ---
@@ -182,39 +188,6 @@ Logged events include:
 * bundles skipped due to permission rules
 * database or API failures
 * completion of the listing process
-
----
-
-# Code Structure
-
-```
-modules/
-  bundle_service/
-    service.py
-    db.py
-    resources/
-    tests/
-```
-
-* **service.py** → bundle business logic
-* **db.py** → database queries
-* **tests/** → automated tests
-
----
-
-# Tests
-
-Tests are implemented using:
-
-* pytest
-* pytest-asyncio
-* unittest.mock
-
-To run the tests:
-
-```
-python -m pytest modules/bundle_service/tests -vv
-```
 
 ---
 

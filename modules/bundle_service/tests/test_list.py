@@ -51,7 +51,9 @@ async def test_list_bundles_success():
     assert bundle["bundle_id"] == "bundle1"
     assert bundle["bundle_name"] == "Bundle Teste"
     assert bundle["price"] == 10
-    assert bundle["rooms"] == ["Sala Teste"]
+    assert bundle["rooms"] == [
+        {"room_id": "!room1:localhost", "name": "Sala Teste"}
+    ]
     assert bundle["keywords"] == ["buzz"]
     assert bundle["status"] == "published"
 
@@ -133,3 +135,9 @@ async def test_list_bundles_admin_can_see_draft():
     result = await service.list_bundles("@admin:localhost")
 
     assert len(result) == 1
+
+    bundle = result[0]
+
+    assert bundle["rooms"] == [
+        {"room_id": "!room1:localhost", "name": "Sala Teste"}
+    ]
