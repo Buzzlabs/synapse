@@ -23,7 +23,7 @@ class BundleService:
                 "list_bundles",
                 db.list_bundles,
             )
-        except Exception as e:
+        except Exception:
             logger.exception("list_bundles: DB error")
             raise
 
@@ -65,7 +65,7 @@ class BundleService:
 
             room_keywords = {row[0]: row[1] for row in room_business_rows}
 
-            room_names = []
+            rooms = []
             keywords = []
 
             for room_id in room_ids:
@@ -87,7 +87,11 @@ class BundleService:
                     )
                     name = "Sem nome"
 
-                room_names.append(name)
+                # guarda room_id + name
+                rooms.append({
+                    "room_id": room_id,
+                    "name": name
+                })
 
                 if room_id in room_keywords:
                     keywords.append(room_keywords[room_id])
@@ -96,7 +100,7 @@ class BundleService:
                 "bundle_id": bundle["bundle_id"],
                 "bundle_name": bundle["bundle_name"],
                 "price": bundle["price"],
-                "rooms": room_names,
+                "rooms": rooms,
                 "keywords": keywords,
                 "status": bundle["status"],
             })
@@ -104,6 +108,7 @@ class BundleService:
         logger.info("list_bundles: finished, %d bundles returned", len(result))
 
         return result
+
 
     async def _is_admin(self, user_id: str) -> bool:
         try:
