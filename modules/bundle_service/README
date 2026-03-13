@@ -568,12 +568,184 @@ These logs help track administrative actions and ensure transparency in bundle m
 
 ---
 
+# Bundle Editing
+
+Bundles can be edited through the method:
+
+```
+BundleService.update_bundle(user_id, bundle_id, bundle_name, price, rooms)
+```
+
+This method allows updating the **bundle name**, **price**, and **associated rooms**.
+
+The editing process validates permissions and ensures that only authorized users can modify bundle data.
+
+---
+
+# Editing Rules
+
+Bundle editing follows several validation and permission rules:
+
+* The request must include:
+
+  * `bundle_id`
+  * `bundle_name`
+  * `price`
+
+* The bundle **must exist** in the database before it can be updated.
+
+* Only the following users are allowed to edit a bundle:
+
+  * the **bundle creator**
+  * **system administrators**
+
+* The list of rooms is normalized to remove duplicates before updating the database.
+
+---
+
+# Editing Flow
+
+1. Receive the editing request with:
+
+   * `user_id`
+   * `bundle_id`
+   * `bundle_name`
+   * `price`
+   * `rooms`
+
+2. Validate required parameters.
+
+The system verifies that the following fields are present:
+
+```
+bundle_id
+bundle_name
+price
+```
+
+If any required field is missing, the system raises a **400 error**.
+
+3. Fetch the bundle from the database.
+
+The system performs a database interaction:
+
+```
+get_bundle_by_id(bundle_id)
+```
+
+If the bundle does not exist, the system raises a **404 error**.
+
+4. Verify user permissions.
+
+The system checks whether the user is an administrator:
+
+```
+_is_admin(user_id)
+```
+
+If the user is **not the bundle creator** and **not an admin**, the update is denied and a **403 error** is raised.
+
+5. Normalize the rooms list.
+
+The list of rooms is cleaned to remove duplicates:
+
+```
+rooms = list(set(rooms or []))
+```
+
+This guarantees that the bundle will not contain duplicated room associations.
+
+6. Execute the update operation.
+
+The system performs a database interaction:
+
+```
+update_bundle(bundle_id, bundle_name, price, rooms)
+```
+
+This updates:
+
+* bundle name
+* bundle price
+* associated rooms
+
+The database layer is responsible for updating the **bundles table** and synchronizing entries in the **bundle_rooms table**.
+
+7. Return the update result.
+
+---
+
+# Response Structure
+
+Example response returned after a successful update:
+
+```json
+{
+  "bundle_id": "bundle1"
+}
+```
+
+This confirms that the bundle was successfully updated.
+
+---
+
+# Error Handling
+
+The editing process includes handling for several error scenarios.
+
+### Missing Required Fields
+
+If required fields are missing, the system raises:
+
+```
+400 - bundle_id is required
+400 - bundle_name is required
+400 - price is required
+```
+
+### Bundle Not Found
+
+If the provided `bundle_id` does not exist in the database, the system raises:
+
+```
+404 - Bundle not found
+```
+
+### Permission Errors
+
+If a user who is neither the bundle creator nor an administrator attempts to edit a bundle, the system raises:
+
+```
+403 - Not allowed to update this bundle
+```
+
+### Database Failures
+
+If the database interaction fails during the update operation, the exception is propagated and logged.
+
+---
+
+# Logging
+
+The editing process logs key events to support debugging and monitoring.
+
+Logged events include:
+
+* start of the update process
+* bundle ID being updated
+* user performing the update
+* failures during bundle retrieval
+* database update failures
+* successful bundle update
+
+These logs provide traceability for bundle modifications performed within the system.
+
+---
+
 # Upcoming Features
 
 Planned next steps for this module include:
 
-* bundle editing
-* bundle deletion
 * bundle purchase flow
 * automatic room invitations after payment
 
