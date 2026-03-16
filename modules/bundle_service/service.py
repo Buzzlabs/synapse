@@ -10,9 +10,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 class BundleService:
-    def __init__(self, api):
+    def __init__(self, api, room_service):
         self.api = api
         self.store = api._hs.get_datastores().main
+        self.room_service = room_service
 
     # ---------------- LIST BUNDLES ----------------
     async def list_bundles(self, user_id):
@@ -278,3 +279,63 @@ class BundleService:
         logger.info("update_bundle: success bundle_id=%s", bundle_id)
 
         return {"bundle_id": bundle_id}
+
+    # ---------------- INVITE BUNDLE ----------------
+    async def invite_bundle(self, user_id: str, bundle_id: str):
+        logger.info(
+            "invite_bundle: start user=%s bundle_id=%s",
+            user_id,
+            bundle_id,
+        )
+
+        rows = await self.store.db_pool.runInteraction(
+            "get_rooms_by_bundle",
+            db.get_rooms_by_bundle,
+            bundle_id,
+        )
+
+        if not rows:
+            logger.warning(
+                "invite_bundle: no rooms found bundle_id=%s",
+                bundle_id,
+            )
+            raise SynapseError(404, "Bundle not found or empty")
+
+        logger.info(
+            "invite_bundle: %d rooms found bundle_id=%s",
+            len(rows),
+            bundle_id,
+        )
+
+        joined_rooms = []
+
+        for row in rows:
+            room_id = row[0] if isinstance(row, (list, tuple)) else row
+            try:
+                logger.debug(
+                    "invite_bundle: joining user=%s room=%s",
+                    user_id,
+                    room_id,
+                )
+
+                await self.room_service._admin_join(room_id, user_id)
+
+                joined_rooms.append(room_id)
+
+            except Exception as e:
+                logger.error(
+                    "invite_bundle: failed join room=%s user=%s error=%s",
+                    room_id,
+                    user_id,
+                    str(e),
+                )
+
+        logger.info(
+            "invite_bundle: finished user=%s rooms_joined=%d",
+            user_id,
+            len(joined_rooms),
+        )
+
+        return joined_rooms
+
+    
