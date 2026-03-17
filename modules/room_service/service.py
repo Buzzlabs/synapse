@@ -198,6 +198,13 @@ class RoomService:
             )
             raise SynapseError(400, "Keyword is required")
 
+        if not data.get("name"):
+            logger.warning(
+                "create_room: missing name creator=%s",
+                creator,
+            )
+            raise SynapseError(400, "Name is required")
+        
         exists = await self.store.db_pool.runInteraction(
             "keyword_exists",
             db.keyword_exists,
@@ -339,7 +346,7 @@ class RoomService:
             price,
         )
         user_id = requester.user.to_string()
-        await self.api.is_user_admin(user_id)
+        await self.assert_is_admin(user_id)
 
         access_type = await self.store.db_pool.runInteraction(
             "get_room_access_type",
@@ -471,7 +478,7 @@ class RoomService:
             price,
         )
 
-        await self.api.is_user_admin(user_id)
+        await self.assert_is_admin(user_id)
 
         row = await self.store.db_pool.runInteraction(
             "get_room_price_info",
@@ -575,7 +582,7 @@ class RoomService:
             price,
         )
 
-        await self.api.is_user_admin(requester.user.to_string())
+        await self.assert_is_admin(requester.user.to_string())
 
         access_type = access_type.lower()
         if access_type not in ("public", "private"):
@@ -609,7 +616,9 @@ class RoomService:
             price = 0
 
         else:
-            if current_access_type == "public" and access_type == "private":
+            if current_access_type == access_type:
+                price = current_price
+            elif current_access_type == "public" and access_type == "private":
                 # PUBLIC → PRIVATE (visível)
                 if price is None or price <= 0:
                     price = 1000
@@ -883,32 +892,4 @@ class RoomService:
             ratelimit=False,
         )
 
-    async def _admin_join(self, room_id: str, user_id: str):
-        url = (
-            f"{self.homeserver}/_synapse/admin/v1/join/"
-            f"{quote(room_id)}"
-        )
-
-        payload = json.dumps({"user_id": user_id}).encode()
-
-        response = await self.agent.request(
-            b"POST",
-            url.encode(),
-            Headers({
-                b"Authorization": [f"Bearer {self.admin_token}".encode()],
-                b"Content-Type": [b"application/json"],
-            }),
-            bodyProducer=_BodyProducer(payload),
-        )
-
-        body = await readBody(response)
-
-        if response.code not in (200, 403):
-            raise SynapseError(
-                response.code,
-                body.decode(errors="ignore"),
-            )
-
-    async def _is_user_in_room(self, room_id: str, user_id: str) -> bool:
-        users = await self.store.get_users_in_room(room_id)
-        return user_id in users
+    
