@@ -10,7 +10,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class BundleService:
-    def __init__(self, api, room_service):
+    def __init__(self, api, room_service=None):
         self.api = api
         self.store = api._hs.get_datastores().main
         self.room_service = room_service
@@ -287,6 +287,9 @@ class BundleService:
             user_id,
             bundle_id,
         )
+        
+        if not self.room_service:
+            raise SynapseError(500, "RoomService not configured")
 
         rows = await self.store.db_pool.runInteraction(
             "get_rooms_by_bundle",
