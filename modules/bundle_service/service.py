@@ -226,3 +226,55 @@ class BundleService:
         )
 
         return {"status": "deleted"}
+    
+    # ---------------- UPDATE BUNDLE ----------------
+    async def update_bundle(self, user_id, bundle_id, bundle_name, price, rooms):
+        logger.info("update_bundle: start bundle_id=%s user=%s", bundle_id, user_id)
+
+        if not bundle_id:
+            raise SynapseError(400, "bundle_id is required")
+
+        if not bundle_name:
+            raise SynapseError(400, "bundle_name is required")
+
+        if price is None:
+            raise SynapseError(400, "price is required")
+
+        try:
+            bundles = await self.store.db_pool.runInteraction(
+                "get_bundle_by_id",
+                db.get_bundle_by_id,
+                bundle_id,
+            )
+        except Exception:
+            logger.exception("update_bundle: failed fetching bundle")
+            raise
+
+        if not bundles:
+            raise SynapseError(404, "Bundle not found")
+
+        bundle = bundles[0]
+
+        is_admin = await self._is_admin(user_id)
+
+        if bundle["created_by"] != user_id and not is_admin:
+            raise SynapseError(403, "Not allowed to update this bundle")
+
+        rooms = list(set(rooms or []))
+
+        try:
+            await self.store.db_pool.runInteraction(
+                "update_bundle",
+                db.update_bundle,
+                bundle_id,
+                bundle_name,
+                price,
+                rooms,
+            )
+        except Exception:
+            logger.exception("update_bundle: database failure")
+            raise
+
+        logger.info("update_bundle: success bundle_id=%s", bundle_id)
+
+        return {"bundle_id": bundle_id}

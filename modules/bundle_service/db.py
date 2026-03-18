@@ -101,18 +101,50 @@ def add_rooms_to_bundle(txn, bundle_id: str, room_ids: list):
 
 # ---------------- UPDATE ----------------
 
-def update_bundle(txn, bundle_id: str, bundle_name: str, price: int):
+def get_bundle_by_id(txn, bundle_id):
+    txn.execute(
+        """
+        SELECT bundle_id, created_by
+        FROM bundles
+        WHERE bundle_id = ?
+        """,
+        (bundle_id,),
+    )
+
+    columns = [col[0] for col in txn.description]
+
+    return [
+        dict(zip(columns, row))
+        for row in txn.fetchall()
+    ]
+
+def update_bundle(txn, bundle_id, bundle_name, price, rooms):
+
     txn.execute(
         """
         UPDATE bundles
-        SET bundle_name = %s,
-            price = %s,
-            updated_at = now()
-        WHERE bundle_id = %s
+        SET bundle_name = ?, price = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE bundle_id = ?
         """,
         (bundle_name, price, bundle_id),
     )
 
+    txn.execute(
+        """
+        DELETE FROM bundle_rooms
+        WHERE bundle_id = ?
+        """,
+        (bundle_id,),
+    )
+
+    for room_id in rooms:
+        txn.execute(
+            """
+            INSERT INTO bundle_rooms (bundle_id, room_id)
+            VALUES (?, ?)
+            """,
+            (bundle_id, room_id),
+        )
 
 # ---------------- DELETE ----------------
 
