@@ -72,7 +72,19 @@ def list_bundles(txn):
 
     return list(result.values())
 
+# ---------------- PUBLISH ----------------
 
+def publish_bundle(txn, bundle_id: str):
+    txn.execute(
+        """
+        UPDATE bundles
+        SET status = 'published',
+            updated_at = now()
+        WHERE bundle_id = %s
+        """,
+        (bundle_id,),
+    )
+    
 # ---------------- ADD ROOMS ----------------
 
 def add_rooms_to_bundle(txn, bundle_id: str, room_ids: list):

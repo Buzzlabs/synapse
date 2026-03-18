@@ -6,7 +6,7 @@ from synapse.module_api import ModuleApi
 from .service import BundleService
 from .resources.list import ListBundlesResource
 from .resources.create import CreateBundleResource
-# from .resources.add_rooms import AddRoomsResource
+from .resources.publish import PublishResource
 # from .resources.update import UpdateBundleResource
 # from .resources.delete import DeleteBundleResource
 # from .resources.activate import ActivateBundleResource
@@ -30,10 +30,10 @@ class BundleServiceModule:
             CreateBundleResource(api, service),
         )
 
-        # api.register_web_resource(
-        #     "/_synapse/bundles/addrooms",
-        #     AddRoomsResource(api, service),
-        # )
+        api.register_web_resource(
+            "/_synapse/bundles/publish",
+            PublishResource(api, service),
+        )
 
         # api.register_web_resource(
         #     "/_synapse/bundles/update",

@@ -12,7 +12,7 @@ Each bundle contains:
 * list of associated rooms
 * publication status
 
-Currently, the module implements **database modeling, bundle listing and bundle creation**.
+Currently, the module implements **database modeling, bundle listing, bundle creation and bunlde publish**.
 
 ---
 
@@ -302,11 +302,141 @@ Logged events include:
 
 ---
 
+# Bundle Publishing
+
+Bundles can be published through the method:
+
+```
+BundleService.publish_bundle(bundle_id, user_id)
+```
+
+This method is responsible for changing the bundle status from **draft** to **published**, making the bundle visible to all users in the platform.
+
+---
+
+# Publishing Rules
+
+Bundle publishing follows strict permission and validation rules:
+
+* Only **administrators** are allowed to publish bundles.
+* The bundle **must exist** in the database before it can be published.
+* The bundle status is updated from:
+
+```
+draft → published
+```
+
+Once published, the bundle becomes **publicly visible** to all users when bundles are listed.
+
+---
+
+# Publishing Flow
+
+1. Receive the publishing request with:
+
+   * `bundle_id`
+   * `user_id`
+
+2. Log the publishing attempt.
+
+3. Verify whether the user is an administrator.
+
+The system calls:
+
+```
+_is_admin(user_id)
+```
+
+If the user is **not an admin**, the process is interrupted and a permission error is raised.
+
+4. Verify that the bundle exists in the database.
+
+The system performs a database interaction:
+
+```
+bundle_exists(bundle_id)
+```
+
+If the bundle is not found, the system raises a **404 error**.
+
+5. Update the bundle status.
+
+If the bundle exists, the database interaction responsible for publishing is executed:
+
+```
+publish_bundle(bundle_id)
+```
+
+This updates the bundle status to:
+
+```
+published
+```
+
+6. Return the publishing result.
+
+---
+
+# Response Structure
+
+Example response returned after a successful publication:
+
+```json
+{
+  "status": "published"
+}
+```
+
+This confirms that the bundle is now publicly available.
+
+---
+
+# Error Handling
+
+The publishing process includes handling for several error scenarios.
+
+### Permission Errors
+
+If a non-admin user attempts to publish a bundle, the system raises:
+
+```
+403 - Only admins can publish bundles
+```
+
+### Bundle Not Found
+
+If the provided `bundle_id` does not exist in the database, the system raises:
+
+```
+404 - Bundle not found
+```
+
+### Database Failures
+
+If the database interaction fails during the publishing operation, the exception is propagated to the caller and logged for debugging.
+
+---
+
+# Logging
+
+The publishing process logs important events to support debugging and observability.
+
+Logged events include:
+
+* start of the publishing process
+* bundle ID being published
+* permission denial attempts
+* bundle not found errors
+* successful bundle publication
+
+These logs help track administrative actions and identify issues during bundle management.
+
+---
+
 # Upcoming Features
 
 Planned next steps for this module include:
 
-* bundle publishing
 * bundle editing
 * bundle deletion
 * bundle purchase flow
