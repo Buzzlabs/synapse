@@ -117,7 +117,6 @@ def update_bundle(txn, bundle_id: str, bundle_name: str, price: int):
 # ---------------- DELETE ----------------
 
 def delete_bundle(txn, bundle_id: str):
-    # apagar primeiro as relações (boa prática mesmo se tiver cascade)
     txn.execute(
         """
         DELETE FROM bundle_rooms

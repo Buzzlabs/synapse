@@ -185,3 +185,44 @@ class BundleService:
         )
 
         return {"status": "published"}
+
+    # ---------------- DELETE BUNDLE ----------------
+    async def delete_bundle(self, bundle_id: str, user_id: str):
+        logger.info("delete_bundle: start | bundle_id=%s | user=%s", bundle_id, user_id)
+
+        is_admin = await self._is_admin(user_id)
+
+        if not is_admin:
+            logger.warning(
+                "delete_bundle: permission denied | user=%s | bundle_id=%s",
+                user_id,
+                bundle_id,
+            )
+            raise SynapseError(403, "Only admins can delete bundles")
+
+        exists = await self.store.db_pool.runInteraction(
+            "bundle_exists",
+            db.bundle_exists,
+            bundle_id,
+        )
+
+        if not exists:
+            logger.warning(
+                "delete_bundle: bundle not found | bundle_id=%s",
+                bundle_id,
+            )
+            raise SynapseError(404, "Bundle not found")
+
+        await self.store.db_pool.runInteraction(
+            "delete_bundle",
+            db.delete_bundle,
+            bundle_id,
+        )
+
+        logger.info(
+            "delete_bundle: success | bundle_id=%s | deleted_by=%s",
+            bundle_id,
+            user_id,
+        )
+
+        return {"status": "deleted"}
