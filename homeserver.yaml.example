@@ -44,4 +44,14 @@ password_providers:
   - module: modules.rest_auth_provider.rest_auth_provider.RestAuthProvider
     config:
       api_base: "http://0.0.0.0:9000"
+admins:
+  - "@admin:localhost"
+
+modules:
+  - module: modules.room_service.module.RoomServiceModule
+    config:
+      admin_user_id: "@admin:localhost"
+      admin_token: "syt_"
+      homeserver: "http://localhost:XXXX"
+  - module: modules.bundle_service.module.BundleServiceModule
 # vim:ft=yaml
