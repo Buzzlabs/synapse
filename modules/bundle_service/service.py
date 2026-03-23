@@ -326,11 +326,22 @@ class BundleService:
                 joined_rooms.append(room_id)
 
             except Exception as e:
+                error_msg = str(e)
+
+                if "already in the room" in error_msg:
+                    logger.info(
+                        "invite_bundle: user already in room=%s user=%s",
+                        room_id,
+                        user_id,
+                    )
+                    joined_rooms.append(room_id)  
+                    continue
+
                 logger.error(
                     "invite_bundle: failed join room=%s user=%s error=%s",
                     room_id,
                     user_id,
-                    str(e),
+                    error_msg,
                 )
 
         logger.info(
