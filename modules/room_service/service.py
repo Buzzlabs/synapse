@@ -724,6 +724,12 @@ class RoomService:
             room_id,
         )
 
+        await self.store.db_pool.runInteraction(
+            "remove_room_from_all_bundles",
+            db.remove_room_from_all_bundles,
+            room_id,
+        )
+
         logger.info(
             "delete_room: success room_id=%s",
             room_id,
