@@ -150,3 +150,12 @@ def delete_room_business(txn, room_id: str):
         """,
         (room_id,),
     )
+
+def remove_room_from_all_bundles(txn, room_id):
+    txn.execute(
+        """
+        DELETE FROM bundle_rooms
+        WHERE room_id = %s
+        """,
+        (room_id,),
+    )
