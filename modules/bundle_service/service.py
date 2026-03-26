@@ -321,27 +321,17 @@ class BundleService:
                     room_id,
                 )
 
-                await self.room_service._admin_join(room_id, user_id)
+                result = await self.room_service._admin_join(room_id, user_id)
 
-                joined_rooms.append(room_id)
+                if result in ("joined", "already_joined"):
+                    joined_rooms.append(room_id)
 
             except Exception as e:
-                error_msg = str(e)
-
-                if "already in the room" in error_msg:
-                    logger.info(
-                        "invite_bundle: user already in room=%s user=%s",
-                        room_id,
-                        user_id,
-                    )
-                    joined_rooms.append(room_id)  
-                    continue
-
                 logger.error(
                     "invite_bundle: failed join room=%s user=%s error=%s",
                     room_id,
                     user_id,
-                    error_msg,
+                    str(e),
                 )
 
         logger.info(

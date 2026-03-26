@@ -779,11 +779,18 @@ class RoomService:
 
         body = await readBody(response)
 
-        if response.code not in (200, 403):
-            raise SynapseError(
-                response.code,
-                body.decode(errors="ignore"),
-            )
+        body_str = body.decode(errors="ignore")
+
+        if response.code == 200:
+            return "joined"
+
+        if response.code == 403:
+            return "already_joined"
+
+        raise SynapseError(
+            response.code,
+            body_str,
+        )
 
     async def _is_user_in_room(self, room_id: str, user_id: str) -> bool:
         users = await self.store.get_users_in_room(room_id)
