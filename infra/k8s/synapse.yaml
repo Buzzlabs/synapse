@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: synapse
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: synapse
+  template:
+    metadata:
+      labels:
+        app: synapse
+    spec:
+      containers:
+
+        # 🧠 SYNAPSE
+        - name: synapse
+          image: synapse-docker-synapse
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 3000
+          volumeMounts:
+            # 📁 volume persistente
+            - name: data
+              mountPath: /data
+
+            # 📜 arquivos do configmap (injeção dentro do /data)
+            - name: config
+              mountPath: /data/homeserver.yaml
+              subPath: homeserver.yaml
+
+            - name: config
+              mountPath: /data/localhost.log.config
+              subPath: localhost.log.config
+
+            - name: config
+              mountPath: /data/localhost.signing.key
+              subPath: localhost.signing.key
+
+        # 🔥 INIT ADMIN (SIDECAR)
+        - name: init-admin
+          image: synapse-docker-synapse
+          imagePullPolicy: Never
+          command: ["/bin/sh", "/scripts/init-admin.sh"]
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+
+            - name: data
+              mountPath: /data
+
+      volumes:
+        # 💾 persistência
+        - name: data
+          persistentVolumeClaim:
+            claimName: synapse-pvc
+
+        # 📜 script
+        - name: scripts
+          configMap:
+            name: synapse-scripts
+            defaultMode: 0755
+
+        # ⚙️ config do synapse
+        - name: config
+          configMap:
+            name: synapse-config

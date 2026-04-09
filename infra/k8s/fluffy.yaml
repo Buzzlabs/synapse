@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluffy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fluffy
+  template:
+    metadata:
+      labels:
+        app: fluffy
+    spec:
+      containers:
+        - name: fluffy
+          image: fluffy-grupos:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 80
