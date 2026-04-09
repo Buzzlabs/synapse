@@ -1,5 +1,7 @@
 # module.py
 import logging
+import time
+import os
 
 from synapse.api.errors import SynapseError
 from synapse.module_api import ModuleApi
@@ -21,7 +23,17 @@ class RoomServiceModule:
     def __init__(self, config, api: ModuleApi):
         self.hs = api._hs  
         admin_user_id = config["admin_user_id"]
-        admin_token = config["admin_token"]
+        admin_token_file = config["admin_token_file"]
+
+        for _ in range(30):  # tenta por ~30s
+            if os.path.exists(admin_token_file):
+                with open(admin_token_file, "r") as f:
+                    admin_token = f.read().strip()
+                break
+            time.sleep(1)
+        else:
+            admin_token = None
+                    
         homeserver = config["homeserver"]
 
         service = RoomService(

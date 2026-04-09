@@ -781,6 +781,14 @@ class RoomService:
 
         body_str = body.decode(errors="ignore")
 
+        logger.info(
+            "admin_join: room=%s user=%s code=%s body=%s",
+            room_id,
+            user_id,
+            response.code,
+            body_str,
+        )
+
         if response.code == 200:
             return "joined"
 
