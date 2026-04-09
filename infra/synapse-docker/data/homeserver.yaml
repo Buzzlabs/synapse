@@ -1,0 +1,81 @@
+# Configuration file for Synapse.
+#
+# This is a YAML file: see [1] for a quick introduction. Note in particular
+# that *indentation is important*: all the elements of a list or dictionary
+# should have the same indentation.
+#
+# [1] https://docs.ansible.com/ansible/latest/reference_appendices/YAMLSyntax.html
+#
+# For more information on how to configure Synapse, including a complete accounting of
+# each option, go to docs/usage/configuration/config_documentation.md or
+# https://element-hq.github.io/synapse/latest/usage/configuration/config_documentation.html
+server_name: "localhost"
+pid_file: /data/homeserver.pid
+listeners:
+  - port: 3000
+    tls: false
+    type: http
+    x_forwarded: true
+    bind_addresses: ["0.0.0.0"]
+    resources:
+      - names: [client, federation]
+        compress: false
+# database:
+#   name: sqlite3
+#   args:
+#     database: /home/livia/BuzzLabs/synapse/homeserver.db
+database:
+  name: psycopg2
+  args:
+    user: userDoDB
+    password: senhaDoDB
+    database: synapse
+    host: postgres
+    port: ...
+    cp_min: 5
+    cp_max: 10
+
+log_config: "/data/localhost.log.config"
+loggers:
+  modules.invite:
+    level: INFO
+  modules.discover:
+    level: INFO
+media_store_path: /data/media_store
+# registration_shared_secret: "ze9EepjAcX_12d~wp2Pe:@;Z2_pTe=JREzXL992Q~@uEBq=1Me"
+report_stats: false
+macaroon_secret_key: "..."
+form_secret: "..."
+signing_key_path: "/data/localhost.signing.key"
+trusted_key_servers:
+  - server_name: "matrix.org"
+suppress_key_server_warning: true
+
+registration_requires_token: false
+enable_registration: false
+enable_3pid_lookup: false
+
+enable_admin_api: true
+admin_api:
+  shared_secret: "..."
+registration_shared_secret: "..."
+# enable_registration_without_verification: true
+password_config:
+  enabled: true
+  localdb_enabled: false
+password_providers:
+  - module: modules.rest_auth_provider.rest_auth_provider.RestAuthProvider
+    config:
+      api_base: "https://paywall.com"
+      timeout: 5
+admins:
+  - "@admin:localhost" # IMPORTANTE!!! PRECISA ADAPTAR CASO A CASO
+
+modules:
+  - module: modules.room_service.module.RoomServiceModule
+    config:
+      admin_user_id: "@admin:localhost" # IMPORTANTE!!! PRECISA ADAPTAR CASO A CASO
+      admin_token_file: "/data/admin_token.txt"
+      homeserver: "http://synapse:3000"
+  - module: modules.bundle_service.module.BundleServiceModule
+# vim:ft=yaml

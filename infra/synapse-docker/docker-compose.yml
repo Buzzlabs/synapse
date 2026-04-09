@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_DB: synapse
+      POSTGRES_USER: userDoDB
+      POSTGRES_PASSWORD: senhaDoDB
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+  synapse:
+    build:
+      context: ..
+      dockerfile: synapse-docker/Dockerfile
+    container_name: synapse
+    depends_on:
+      - db
+    restart: unless-stopped
+
+    volumes:
+      - ./data:/data
+      - ./scripts:/scripts
+    ports:
+      - "3000:3000"
+    command: >
+      sh -c "
+        python -m synapse.app.homeserver --config-path /data/homeserver.yaml &
+        echo 'Esperando Synapse iniciar...'
+        sleep 10
+        /scripts/init-admin.sh
+        wait
+      "
+volumes:
+  db_data:
