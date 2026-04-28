@@ -31,6 +31,8 @@ class RoomServiceModule:
             homeserver=homeserver,
         )
 
+        self.hs.room_service = service
+
         api.register_third_party_rules_callbacks(
             check_event_allowed=self.check_event_allowed,
         )

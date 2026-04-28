@@ -742,12 +742,156 @@ These logs provide traceability for bundle modifications performed within the sy
 
 ---
 
-# Upcoming Features
+# Bundle Invitation
 
-Planned next steps for this module include:
+Users can be invited to all rooms within a bundle through the method:
 
-* bundle purchase flow
-* automatic room invitations after payment
+```
+BundleService.invite_bundle(user_id, bundle_id)
+```
 
-These features are currently under development.
+This method is responsible for automatically adding a user to all rooms associated with a given bundle.
+
+---
+
+# Invitation Rules
+
+The invitation process follows validation and execution rules:
+
+* The system must have the **RoomService configured**.
+* The bundle must exist and contain associated rooms.
+* The user will be invited (joined) to all rooms in the bundle.
+
+If any of these conditions fail, the process is interrupted with an error.
+
+---
+
+# Invitation Flow
+
+1. Receive the invitation request with:
+
+   * `user_id`
+   * `bundle_id`
+
+2. Validate RoomService availability.
+
+The system verifies whether the RoomService is configured:
+
+```
+self.room_service
+```
+
+If not configured, the system raises a **500 error**.
+
+---
+
+3. Fetch bundle rooms.
+
+The system performs a database interaction:
+
+```
+get_rooms_by_bundle(bundle_id)
+```
+
+If no rooms are found, the system raises a **404 error**, indicating that the bundle does not exist or is empty.
+
+---
+
+4. Iterate through rooms.
+
+For each room associated with the bundle:
+
+* Extract the `room_id`
+* Attempt to add the user to the room
+
+The join operation is executed through:
+
+```
+room_service._admin_join(room_id, user_id)
+```
+
+---
+
+5. Handle join execution.
+
+For each room:
+
+* If the join succeeds → the room is added to the success list
+* If the join fails → the error is logged and the process continues with the next room
+
+This ensures that a failure in one room does **not block the entire invitation process**.
+
+---
+
+6. Return the result.
+
+After processing all rooms, the system returns the list of rooms where the user was successfully added.
+
+---
+
+# Response Structure
+
+Example response after a successful invitation:
+
+```json
+[
+  "!room1:server",
+  "!room2:server"
+]
+```
+
+This response contains all rooms the user successfully joined.
+
+---
+
+# Error Handling
+
+The invitation process includes handling for several error scenarios.
+
+### RoomService Not Configured
+
+If the RoomService is not available, the system raises:
+
+```
+500 - RoomService not configured
+```
+
+---
+
+### Bundle Not Found or Empty
+
+If the bundle does not exist or has no associated rooms, the system raises:
+
+```
+404 - Bundle not found or empty
+```
+
+---
+
+### Room Join Failures
+
+If joining a specific room fails:
+
+* The error is logged
+* The system continues processing remaining rooms
+
+This ensures partial success is allowed.
+
+---
+
+# Logging
+
+The invitation process logs key events for observability and debugging.
+
+Logged events include:
+
+* start of the invitation process
+* user and bundle being processed
+* number of rooms found
+* each room join attempt (debug level)
+* failures when joining specific rooms
+* total number of rooms successfully joined
+
+These logs help track invitation behavior and diagnose failures in room joins.
+
 
