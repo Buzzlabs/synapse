@@ -38,7 +38,15 @@ from synapse.util.duration import Duration
 
 from tests import unittest
 from tests.http.server._base import test_disconnect
+from immutabledict import immutabledict
 
+from synapse.events.validator import Mentions
+from synapse.http.servlet import (
+    RestServlet,
+    parse_json_object_from_request,
+    parse_json_value_from_request,
+    validate_json_object,
+)
 
 def make_request(content: bytes | JsonDict) -> Mock:
     """Make an object that acts enough like a request."""
@@ -96,6 +104,14 @@ class TestServletUtils(unittest.TestCase):
         # Test not an object
         with self.assertRaises(SynapseError):
             parse_json_object_from_request(make_request(b'["foo"]'))
+    
+    def test_validate_json_object_accepts_immutabledict(self) -> None:
+        result = validate_json_object(
+            immutabledict({}),
+            Mentions,
+        )
+
+        self.assertEqual(result, Mentions())
 
 
 class CancellableRestServlet(RestServlet):
