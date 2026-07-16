@@ -14,7 +14,9 @@ spec:
     spec:
       containers:
         - name: fluffy
-          image: fluffy-grupos:latest
-          imagePullPolicy: Never
+          image: docker.buzzlabs.com.br/fluffy-grupos
+          imagePullPolicy: Always
           ports:
             - containerPort: 80
+      imagePullSecrets:
+        - name: global-regcred
