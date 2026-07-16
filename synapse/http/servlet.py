@@ -43,6 +43,7 @@ from synapse.http import redact_uri
 from synapse.http.server import HttpServer
 from synapse.types import JsonDict, RoomAlias, RoomID, StrCollection
 from synapse.util.json import json_decoder
+from collections.abc import Mapping
 
 if TYPE_CHECKING:
     from synapse.server import HomeServer
@@ -890,7 +891,11 @@ def validate_json_object(content: JsonDict, model_type: type[Model]) -> Model:
         SynapseError if the request body couldn't be decoded as JSON or
             if it wasn't a JSON object.
     """
+    
     try:
+        if isinstance(content, Mapping) and not isinstance(content, dict):
+            content = dict(content)
+
         instance = model_type.model_validate(content)
     except ValidationError as e:
         err_type = e.errors()[0]["type"]
