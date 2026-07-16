@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: synapse-scripts
+data:
+  init-admin.sh: |
+    #!/bin/sh
+    set -e
+
+    TOKEN_FILE="/data/admin_token.txt"
+    HOMESERVER_URL="http://localhost:3000"
+
+    DB_HOST="postgres"
+    DB_USER="userDoDB"
+    DB_NAME="synapse"
+    DB_PASSWORD="senhaDoDB"
+
+    EMAIL="matheus.silva@buzzlabs.com.br"
+    PASSWORD='Xablau3521@!'
+
+    echo "Esperando Synapse subir..."
+    until curl -s "$HOMESERVER_URL/_matrix/client/versions" > /dev/null; do
+      sleep 2
+    done
+
+    echo "Fazendo login..."
+
+    RESPONSE=$(curl -s -X POST "$HOMESERVER_URL/_matrix/client/v3/login" \
+      -H "Content-Type: application/json" \
+      -d "{
+        \"type\": \"m.login.password\",
+        \"identifier\": {
+          \"type\": \"m.id.user\",
+          \"user\": \"$EMAIL\"
+        },
+        \"password\": \"$PASSWORD\"
+      }")
+
+    ACCESS_TOKEN=$(echo "$RESPONSE" | jq -r '.access_token')
+    USER_ID=$(echo "$RESPONSE" | jq -r '.user_id')
+
+    if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
+      echo "Erro ao logar"
+      exit 1
+    fi
+
+    echo "Tornando admin..."
+
+    PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -c \
+    "UPDATE users SET admin = 1 WHERE name = '$USER_ID';"
+
+    echo "$ACCESS_TOKEN" > "$TOKEN_FILE"
+
+    echo "Finalizado"
+    echo "Mantendo container vivo..."
+    tail -f /dev/null

@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluffy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fluffy
+  template:
+    metadata:
+      labels:
+        app: fluffy
+    spec:
+      containers:
+        - name: fluffy
+          image: docker.buzzlabs.com.br/fluffy-grupos
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+      imagePullSecrets:
+        - name: global-regcred
