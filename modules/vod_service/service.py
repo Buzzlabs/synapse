@@ -67,7 +67,7 @@ class VodService:
         Pega o thumbnail do meio da gravacao. O IVS gera 4 thumbs por minuto
         (1 a cada 15s), entao: thumb_num = (minutos_totais / 2) * 4.
         """
-        if not started_at or not ended_at:
+        if started_at is None or ended_at is None:
             return self.thumbnail_url(recording_path, 0)
 
         try:

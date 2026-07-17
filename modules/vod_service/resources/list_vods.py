@@ -1,4 +1,4 @@
-from synapse.http.server import DirectServeJsonResource, respond_with_json
+from synapse.http.server import DirectServeJsonResource
 from synapse.http.servlet import parse_integer
 
 
@@ -20,4 +20,4 @@ class ListVodsResource(DirectServeJsonResource):
             page=page,
             limit=limit,
         )
-        respond_with_json(request, 200, result, send_cors=True)
+        return 200, result
