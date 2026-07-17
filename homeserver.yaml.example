@@ -48,6 +48,11 @@ admins:
   - "@admin:localhost"
 
 modules:
+  - module: modules.vod_service.module.VodServiceModule
+    config:
+      object_storage_base_url: "https://objectstorage.<REGIAO>.oraclecloud.com"
+      namespace: "<NAMESPACE>"
+      bucket: "vod-teste"
   - module: modules.room_service.module.RoomServiceModule
     config:
       admin_user_id: "@admin:localhost"
