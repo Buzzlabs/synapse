@@ -91,7 +91,7 @@ class VodService:
         (
             row_id,
             stream_id,
-            channel_id,
+            room_id,
             title,
             category_id,
             recording_path,
@@ -103,7 +103,7 @@ class VodService:
         return {
             "id": row_id,
             "streamId": stream_id,
-            "channelId": channel_id,
+            "roomId": room_id,
             "title": title,
             "categoryId": category_id,
             "recordingPath": recording_path,
@@ -120,11 +120,13 @@ class VodService:
         }
 
     # ---------------- LIST ----------------
-    async def list_vods(self, channel_id: int, page: int = 1, limit: int = 10):
+    async def list_vods(self, room_id: str, page: int = 1, limit: int = 10):
         logger.info(
-            "list_vods: channel_id=%s page=%s limit=%s", channel_id, page, limit
+            "list_vods: room_id=%s page=%s limit=%s", room_id, page, limit
         )
 
+        if not room_id:
+            raise SynapseError(400, "room_id is required")
         if page < 1:
             raise SynapseError(400, "page must be >= 1")
         if limit < 1 or limit > 100:
@@ -135,7 +137,7 @@ class VodService:
         rows = await self.store.db_pool.runInteraction(
             "get_vods",
             db.get_vods,
-            channel_id,
+            room_id,
             limit,
             offset,
         )
@@ -143,7 +145,7 @@ class VodService:
         total = await self.store.db_pool.runInteraction(
             "count_vods",
             db.count_vods,
-            channel_id,
+            room_id,
         )
 
         logger.info("list_vods: %d vods retornados (total=%d)", len(rows), total)

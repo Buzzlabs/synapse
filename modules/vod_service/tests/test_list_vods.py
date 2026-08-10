@@ -113,32 +113,30 @@ async def test_list_vods_success():
 
 
 @pytest.mark.asyncio
-async def test_list_vods_usa_defaults():
+async def test_list_vods_sem_room_id():
     """
-    Sem query params deve usar channel_id=4, page=1, limit=10.
+    Sem room_id deve retornar 400 (room_id é obrigatório, não tem default).
     """
     resource, service = _make_list_resource()
 
     request = _make_list_request()
 
-    await resource._async_render_GET(request)
+    with pytest.raises(SynapseError) as err:
+        await resource._async_render_GET(request)
 
-    service.list_vods.assert_awaited_once_with(
-        channel_id=4,
-        page=1,
-        limit=10,
-    )
+    assert err.value.code == 400
+    service.list_vods.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_list_vods_repassa_query_params():
     """
-    Os query params devem chegar no service como inteiros.
+    Os query params devem chegar no service (room_id como string).
     """
     resource, service = _make_list_resource()
 
     request = _make_list_request({
-        b"channel_id": [b"9"],
+        b"room_id": [b"!abc:localhost"],
         b"page": [b"3"],
         b"limit": [b"25"],
     })
@@ -146,7 +144,7 @@ async def test_list_vods_repassa_query_params():
     await resource._async_render_GET(request)
 
     service.list_vods.assert_awaited_once_with(
-        channel_id=9,
+        room_id="!abc:localhost",
         page=3,
         limit=25,
     )

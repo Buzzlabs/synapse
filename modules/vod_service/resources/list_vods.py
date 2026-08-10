@@ -1,5 +1,5 @@
 from synapse.http.server import DirectServeJsonResource
-from synapse.http.servlet import parse_integer
+from synapse.http.servlet import parse_integer, parse_string
 
 
 class ListVodsResource(DirectServeJsonResource):
@@ -11,12 +11,12 @@ class ListVodsResource(DirectServeJsonResource):
         self.service = service
 
     async def _async_render_GET(self, request):
-        channel_id = parse_integer(request, "channel_id", default=4)
+        room_id = parse_string(request, "room_id", required=True)
         page = parse_integer(request, "page", default=1)
         limit = parse_integer(request, "limit", default=10)
 
         result = await self.service.list_vods(
-            channel_id=channel_id,
+            room_id=room_id,
             page=page,
             limit=limit,
         )

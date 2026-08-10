@@ -28,3 +28,39 @@ CREATE TABLE public.room_business (
     keyword text UNIQUE,
     created_at int8 NOT NULL
 );
+
+CREATE TABLE public.room_features (
+    room_id text NOT NULL,
+    feature text NOT NULL,
+    enabled boolean NOT NULL DEFAULT false,
+    created_at int8 NOT NULL,
+    updated_at int8 NOT NULL,
+    PRIMARY KEY (room_id, feature),
+    FOREIGN KEY (room_id)
+        REFERENCES public.room_business(room_id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX room_features_room_idx ON public.room_features (room_id);
+
+CREATE TABLE public.streams (
+    id                     BIGSERIAL PRIMARY KEY,
+    stream_id              TEXT,
+    room_id                TEXT NOT NULL,
+    title                  TEXT,
+    category_id            BIGINT,
+    recording_path         TEXT,
+    recording_duration_ms  BIGINT,
+    recording_started_at   BIGINT,
+    recording_ended_at     BIGINT,
+    started_at             BIGINT,
+    ended_at               BIGINT,
+    created_at             BIGINT,
+    updated_at             BIGINT,
+    FOREIGN KEY (room_id)
+        REFERENCES public.room_business(room_id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX streams_room_started_idx ON public.streams (room_id, started_at DESC);
+CREATE INDEX streams_stream_id_idx ON public.streams (stream_id);

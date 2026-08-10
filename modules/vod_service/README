@@ -11,10 +11,10 @@ The URL building logic that used to live in the model's `@computed()` getters no
 ## Features
 
 - expose custom REST endpoints for VOD listing
-- paginate recorded streams by channel
+- paginate recorded streams by room
 - build HLS master playlist URLs (Oracle Object Storage native URLs)
 - build thumbnail URLs (including the "middle of the recording" thumbnail)
-- return the same JSON field names the old AdonisJS API returned
+- serve VOD metadata scoped to a room
 
 ---
 
@@ -30,7 +30,7 @@ The URL building logic that used to live in the model's `@computed()` getters no
    - builds Object Storage URLs from `recording_path`
    - returns JSON
 
-The module **does not** record or store video. Files are produced elsewhere (IVS / streaming pipeline) and uploaded to Object Storage. This module only serves the metadata and the resulting URLs.
+The module **does not** record or store video. Files are produced elsewhere (streaming / recording pipeline) and uploaded to Object Storage. This module only serves the metadata and the resulting URLs.
 
 ---
 
@@ -43,15 +43,21 @@ The module **does not** record or store video. Files are produced elsewhere (IVS
 
 ### List VODs
 
-GET /list?channel_id=4&page=1&limit=10
+GET /list?room_id=!abc:localhost&page=1&limit=10
 
-Returns a paginated list of recorded streams (ended_at IS NOT NULL).
+Returns a paginated list of recorded streams (ended_at IS NOT NULL) for a room.
+
+**Query params:**
+
+- `room_id` (required) – URL-encoded Matrix room ID
+- `page` (default 1)
+- `limit` (default 10, max 100)
 
 **Response fields (per item):**
 
 - `id`
 - `streamId`
-- `channelId`
+- `roomId`
 - `title`
 - `categoryId`
 - `recordingPath`
@@ -70,6 +76,10 @@ Returns a paginated list of recorded streams (ended_at IS NOT NULL).
 - `page`
 - `perPage`
 - `lastPage`
+
+**Errors:**
+
+- `400` – room_id is required / invalid page or limit
 
 ---
 
@@ -98,15 +108,21 @@ Playback URLs follow the Oracle Object Storage native format:
 https://objectstorage.<region>.oraclecloud.com/n/<namespace>/b/<bucket>/o/<recording_path>/media/hls/master.m3u8
 ```
 
-The `<recording_path>/media/hls/` + `<recording_path>/media/thumbnails/` layout is the one produced by IVS auto-record and is kept unchanged.
+The `<recording_path>/media/hls/` + `<recording_path>/media/thumbnails/` layout follows the HLS auto-record convention and is kept unchanged.
 
 The old AdonisJS format was:
 
 ```
 https://<CF_DOMAIN>/<recording_path>/media/hls/master.m3u8
 ```
-
 There is no CDN in front of Object Storage for now, so objects must be publicly readable. If access needs to be restricted, `VodService` must be changed to generate **pre-signed URLs** instead of plain string URLs.
+
+---
+
+## Notes
+
+- VODs are scoped by `room_id`: each recording belongs to a Matrix room, and the `streams` table has a `room_id` column (FK to `room_business`).
+- Whether the VODs tab is shown for a room is controlled separately, by the `room_features` table (feature `vods`) — not by this module.
 
 ---
 
@@ -116,9 +132,9 @@ Example `homeserver.yaml` configuration:
 
 ```yaml
 modules:
-   - module: modules.vod_service.module.VodServiceModule
+    - module: modules.vod_service.module.VodServiceModule
       config:
-         object_storage_base_url: "https://objectstorage.<REGIAO>.oraclecloud.com"
-         namespace: "<NAMESPACE>"
-         bucket: "vod-teste"
+          object_storage_base_url: "https://objectstorage.<REGIAO>.oraclecloud.com"
+          namespace: "<NAMESPACE>"
+          bucket: "vod-teste"
 ```
