@@ -1,5 +1,7 @@
 # service.py
 import logging
+import time
+import uuid
 
 from synapse.module_api import ModuleApi
 from synapse.api.errors import SynapseError
@@ -16,12 +18,16 @@ class VodService:
         object_storage_base_url: str,
         namespace: str,
         bucket: str,
+        service_token: str = None,
     ):
         self.api = api
         self.hs = api._hs
         self.object_storage_base_url = object_storage_base_url.rstrip("/")
         self.namespace = namespace
         self.bucket = bucket
+        # segredo compartilhado com quem cria VODs (finalize.sh do Jibri, OBS, etc).
+        # Nao e um usuario logado - e maquina chamando maquina.
+        self.service_token = service_token
 
         self.store = self.hs.get_datastores().main
 
@@ -33,8 +39,6 @@ class VodService:
         Formato:
         https://objectstorage.<regiao>.oraclecloud.com
             /n/<namespace>/b/<bucket>/o/<recording_path>
-
-        Substitui o antigo `https://<CF_DOMAIN>/<recording_path>` do AdonisJS.
         """
         return (
             f"{self.object_storage_base_url}"
@@ -62,10 +66,7 @@ class VodService:
         ended_at,
     ) -> str:
         """
-        Porta do @computed() latestThumbnail do model Stream (AdonisJS).
-
-        Pega o thumbnail do meio da gravacao. O IVS gera 4 thumbs por minuto
-        (1 a cada 15s), entao: thumb_num = (minutos_totais / 2) * 4.
+        Pega o thumbnail do meio da gravacao (4 thumbs por minuto).
         """
         if started_at is None or ended_at is None:
             return self.thumbnail_url(recording_path, 0)
@@ -172,5 +173,61 @@ class VodService:
 
         if not row:
             raise SynapseError(404, "VOD not found")
+
+        return self._serialize(row)
+
+    # ---------------- CREATE (escrita) ----------------
+    def assert_service_token(self, token: str) -> None:
+        """
+        Autentica quem cria VODs. Nao e usuario logado - e um servico
+        (finalize.sh do Jibri, OBS, pipeline) mandando um segredo compartilhado.
+        """
+        if not self.service_token:
+            raise SynapseError(503, "VOD creation is not configured (no service token)")
+        if not token or token != self.service_token:
+            raise SynapseError(403, "Invalid service token")
+
+    async def create_vod(
+        self,
+        *,
+        service_token: str,
+        room_id: str,
+        recording_path: str,
+        title=None,
+        started_at=None,
+        ended_at=None,
+        recording_duration_ms=None,
+    ) -> dict:
+        self.assert_service_token(service_token)
+
+        if not room_id:
+            raise SynapseError(400, "room_id is required")
+        if not recording_path:
+            raise SynapseError(400, "recording_path is required")
+
+        now_ms = int(time.time() * 1000)
+        # o backend gera o stream_id, o caller nao precisa se preocupar
+        stream_id = f"vod_{uuid.uuid4().hex}"
+
+        logger.info(
+            "create_vod: room_id=%s recording_path=%s stream_id=%s",
+            room_id,
+            recording_path,
+            stream_id,
+        )
+
+        row = await self.store.db_pool.runInteraction(
+            "insert_vod",
+            db.insert_vod,
+            stream_id,
+            room_id,
+            title,
+            recording_path,
+            recording_duration_ms,
+            started_at,
+            ended_at,
+            now_ms,
+            now_ms,
+        )
 
         return self._serialize(row)

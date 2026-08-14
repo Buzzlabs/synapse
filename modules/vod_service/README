@@ -1,7 +1,7 @@
 # VOD Service Module for Matrix Synapse
 
-This module exposes **HTTP endpoints** that list and retrieve recorded streams
-(VODs), returning ready-to-play playback URLs.
+This module exposes **HTTP endpoints** to create, list and retrieve recorded
+streams (VODs), returning ready-to-play playback URLs.
 
 It replaces the AdonisJS `Stream` model + `/api/streams/vods` route.
 The URL building logic that used to live in the model's `@computed()` getters now lives in `VodService`, pointing to **Oracle Object Storage** instead of AWS CloudFront.
@@ -10,7 +10,8 @@ The URL building logic that used to live in the model's `@computed()` getters no
 
 ## Features
 
-- expose custom REST endpoints for VOD listing
+- expose custom REST endpoints for VOD listing and retrieval
+- register new VODs from a recording pipeline (service-token protected)
 - paginate recorded streams by room
 - build HLS master playlist URLs (Oracle Object Storage native URLs)
 - build thumbnail URLs (including the "middle of the recording" thumbnail)
@@ -24,13 +25,15 @@ The URL building logic that used to live in the model's `@computed()` getters no
 2. The module initializes a `VodService`
 3. Custom HTTP endpoints are registered under:
    /\_synapse/vod_service/\*
-4. External clients (frontend) call these endpoints
+4. Callers use these endpoints:
+   - the frontend reads VODs for a room (list/get)
+   - a recording pipeline registers finished recordings (create)
 5. The module:
-   - reads stream metadata from the database
+   - reads/writes stream metadata in the database
    - builds Object Storage URLs from `recording_path`
    - returns JSON
 
-The module **does not** record or store video. Files are produced elsewhere (streaming / recording pipeline) and uploaded to Object Storage. This module only serves the metadata and the resulting URLs.
+The module **does not** record or store video. Files are produced elsewhere (streaming / recording pipeline) and uploaded to Object Storage. This module only stores the metadata and serves the resulting URLs.
 
 ---
 
@@ -38,18 +41,19 @@ The module **does not** record or store video. Files are produced elsewhere (str
 
 - /\_synapse/vod_service/list
 - /\_synapse/vod_service/get
+- /\_synapse/vod_service/create
 
 ---
 
 ### List VODs
 
-GET /list?room_id=!abc:localhost&page=1&limit=10
+POST /list
 
 Returns a paginated list of recorded streams (ended_at IS NOT NULL) for a room.
 
-**Query params:**
+**Body:**
 
-- `room_id` (required) – URL-encoded Matrix room ID
+- `room_id` (required) – Matrix room ID
 - `page` (default 1)
 - `limit` (default 10, max 100)
 
@@ -100,6 +104,40 @@ Returns a single VOD by id.
 
 ---
 
+### Create VOD
+
+POST /create
+
+Registers a finished recording as a new VOD. Intended to be called by a
+recording pipeline (Jibri `finalize.sh`, an OBS post-hook, a streaming server,
+etc.) — **not** by a logged-in user. The caller authenticates with a shared
+**service token**, not a Matrix access token.
+
+**Auth:**
+
+- Header `Authorization: Bearer <service_token>` (see Configuration)
+
+**Body:**
+
+- `room_id` (required) – the room the VOD belongs to
+- `recording_path` (required) – the object key prefix in the bucket
+- `title` (optional)
+- `started_at` (optional, epoch ms)
+- `ended_at` (optional, epoch ms)
+- `recording_duration_ms` (optional)
+
+The `stream_id` is generated server-side; callers don't provide it.
+
+**Response:** the created VOD, in the same shape as list/get items.
+
+**Errors:**
+
+- `400` – room_id or recording_path missing
+- `403` – missing or invalid service token
+- `503` – VOD creation not configured (no service token set)
+
+---
+
 ## URL format
 
 Playback URLs follow the Oracle Object Storage native format:
@@ -115,7 +153,7 @@ The old AdonisJS format was:
 ```
 https://<CF_DOMAIN>/<recording_path>/media/hls/master.m3u8
 ```
-There is no CDN in front of Object Storage for now, so objects must be publicly readable. If access needs to be restricted, `VodService` must be changed to generate **pre-signed URLs** instead of plain string URLs.
+There is no CDN in front of Object Storage for now, so objects must be publicly readable. If access needs to be restricted, `VodService` must be changed to generate **pre-signed URLs** instead of plain string URLs. This is a real gap for VODs in paid/private rooms: a public bucket serves anyone who has the URL, regardless of room membership.
 
 ---
 
@@ -123,6 +161,7 @@ There is no CDN in front of Object Storage for now, so objects must be publicly 
 
 - VODs are scoped by `room_id`: each recording belongs to a Matrix room, and the `streams` table has a `room_id` column (FK to `room_business`).
 - Whether the VODs tab is shown for a room is controlled separately, by the `room_features` table (feature `vods`) — not by this module.
+- `create` only registers metadata. Uploading the actual files to Object Storage is the pipeline's responsibility, and must happen before (or alongside) the create call, or playback URLs will 404.
 
 ---
 
@@ -137,4 +176,26 @@ modules:
           object_storage_base_url: "https://objectstorage.<REGIAO>.oraclecloud.com"
           namespace: "<NAMESPACE>"
           bucket: "vod-teste"
+          service_token_file: "/path/to/vod_service_token.txt"
+```
+
+`service_token_file` (or `service_token` inline) enables the `create`
+endpoint. If neither is set, `create` returns `503` and the module still
+serves list/get normally.
+
+Generate a token with:
+
+```
+openssl rand -hex 32 > /path/to/vod_service_token.txt
+```
+
+---
+
+## Database
+
+The `streams` table needs read **and write** privileges for the Synapse DB user:
+
+```sql
+GRANT SELECT, INSERT, UPDATE, DELETE ON streams TO <synapse_user>;
+GRANT USAGE, SELECT ON SEQUENCE streams_id_seq TO <synapse_user>;
 ```
