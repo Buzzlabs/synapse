@@ -64,3 +64,13 @@ CREATE TABLE public.streams (
 
 CREATE INDEX streams_room_started_idx ON public.streams (room_id, started_at DESC);
 CREATE INDEX streams_stream_id_idx ON public.streams (stream_id);
+
+CREATE TABLE public.room_calendars (
+    room_id     text NOT NULL,
+    calendar_id text NOT NULL,
+    created_at  int8 NOT NULL,
+    updated_at  int8 NOT NULL,
+    PRIMARY KEY (room_id),
+    FOREIGN KEY (room_id) REFERENCES public.room_business(room_id) ON DELETE CASCADE
+);
+ALTER TABLE room_calendars OWNER TO <synapse_user>;
