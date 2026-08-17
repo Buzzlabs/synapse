@@ -96,7 +96,9 @@ async def test_list_vods_success():
         "meta": {"total": 1, "page": 1, "perPage": 10, "lastPage": 1},
     })
 
-    request = _make_list_request()
+    request = _make_list_request({
+        b"room_id": [b"!room:localhost"],
+    })
 
     code, body = await resource._async_render_GET(request)
 
@@ -160,7 +162,9 @@ async def test_list_vods_retorna_meta_da_paginacao():
         "meta": {"total": 25, "page": 2, "perPage": 10, "lastPage": 3},
     })
 
-    request = _make_list_request()
+    request = _make_list_request({
+        b"room_id": [b"!room:localhost"],
+    })
 
     code, body = await resource._async_render_GET(request)
 
