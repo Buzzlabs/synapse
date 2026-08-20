@@ -236,6 +236,12 @@ class RoomService:
 
         join_rule = "public"
 
+        # room_kind decide se criamos um group (room normal) ou um space.
+        # get_visible_rooms ja aceita ('group', 'space'), entao um space
+        # visivel aparece no discover pelo mesmo caminho da room.
+        room_kind = data.get("room_kind", "group")
+        is_space = room_kind == "space"
+
         room_config = {
             "name": data["name"],
             "is_direct": False,
@@ -265,8 +271,14 @@ class RoomService:
                 },
             ],
         }
+        # marca o room como space na criacao (o que o check_event_allowed
+        # barrava antes). Sem isso o Matrix cria uma room normal.
+        if is_space:
+            room_config["creation_content"] = {"type": "m.space"}
+
         logger.info(
-            "create_room: creating room name='%s' creator=%s",
+            "create_room: creating %s name='%s' creator=%s",
+            "space" if is_space else "room",
             data.get("name"),
             creator,
         )
@@ -286,6 +298,8 @@ class RoomService:
             room_id,
             {
                 **data,
+                "room_kind": room_kind,
+                "access_type": access_type,
                 "price": price,
                 "visible": visible,
             },
@@ -915,5 +929,3 @@ class RoomService:
             action="leave",
             ratelimit=False,
         )
-
-    
