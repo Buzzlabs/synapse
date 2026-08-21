@@ -3,8 +3,9 @@
 This module implements a custom room management service for Matrix Synapse.
 
 It exposes a set of **authenticated HTTP endpoints** that allow external systems
-(frontend, admin panels or backend services) to **discover, create and manage rooms**
-with additional **business rules** such as visibility, access type, pricing and keywords.
+(frontend, admin panels or backend services) to **discover, create and manage rooms
+and spaces** with additional **business rules** such as visibility, access type,
+pricing and keywords.
 
 The module integrates directly with Synapse internals and uses the **admin API**
 to perform privileged operations.
@@ -16,14 +17,29 @@ to perform privileged operations.
 This module allows Synapse to:
 
 - expose custom REST endpoints for room management
-- discover visible rooms with metadata
-- create rooms with business configuration
+- discover visible rooms and spaces with metadata
+- create rooms and spaces with business configuration
 - join users to rooms using keywords
 - control room visibility (public / private)
 - manage paid and free rooms
 - change access type dynamically
-- safely delete rooms
+- safely delete rooms and spaces
 - enforce admin-only operations
+
+---
+
+## Rooms vs Spaces
+
+A **space** is a Matrix room of type `m.space` — a container that organises
+other rooms (like a folder). This module treats spaces as first-class rooms:
+they live in the same `room_business` table, differ only by `room_kind`, and go
+through the same endpoints.
+
+Spaces here are **organisational only**: they are always free (`price = 0`) and
+do not gate access to the rooms inside them (Matrix keeps space membership and
+child-room access independent). A public space appears in discover alongside
+public rooms; a private space is not listed. Selling/bundling rooms is handled
+separately (bundles), not by spaces.
 
 ---
 
@@ -52,28 +68,31 @@ All endpoints are exposed under:
 - /\_synapse/room_service/is_admin
 - /\_synapse/room_service/changevisibility
 - /\_synapse/room_service/getvisibility
+- /\_synapse/room_service/changeprice
 - /\_synapse/room_service/changeaccesstype
 - /\_synapse/room_service/deleteroom
 
 ---
 
-### Discover rooms
+### Discover rooms and spaces
 
 GET /discover
 
-Returns a list of visible rooms with metadata.
+Returns a list of visible rooms and spaces with metadata.
 
 **Response fields:**
 
 - `room_id`
 - `name`
-- `room_kind`
+- `room_kind` — `"group"` (normal room) or `"space"`
 - `access_type`
 - `price`
 - `keyword`
 - `member_count`
 
-Only rooms where the **admin user is a member** are returned.
+Only rooms where the **admin user is a member** are returned. The frontend can
+use `room_kind` to list spaces separately from rooms (e.g. under a "Public
+spaces" filter).
 
 ---
 
@@ -96,22 +115,32 @@ Joins a user to a room using a keyword.
 
 ---
 
-### Create room
+### Create room or space
 
 POST /create
 
-Creates a new room with business metadata.
+Creates a new room (or space) with business metadata.
 
 **Requirements:**
 
 - requester must be a Synapse admin
 - `keyword` must be unique
 
+**Body fields:**
+
+- `name`
+- `keyword` (unique)
+- `visible`
+- `access_type` (`public` / `private`)
+- `price`
+- `room_kind` (optional, default `"group"`) — pass `"space"` to create a space
+
 **Behavior:**
 
-- creates the room
+- creates the room, or a space when `room_kind` is `"space"` (adds
+  `creation_content: { type: "m.space" }`)
 - sets initial power levels
-- stores metadata in the database
+- stores metadata in the database (including `room_kind`)
 - ensures the admin user joins the room
 - configures join rules based on access type
 
@@ -128,6 +157,9 @@ Updates the visibility and price of a room.
 - invisible rooms always have `price = 0`
 - private visible rooms require a price
 - public rooms cannot have a price
+
+Note: spaces are always public/free, so their visibility is toggled with
+`price = 0` and never hits the "private visible requires price" rule.
 
 ---
 
@@ -181,21 +213,23 @@ Admin-only operation.
 
 ---
 
-### Delete room
+### Delete room or space
 
 POST /deleteroom
 
-Deletes a room safely.
+Deletes a room or space safely.
 
 **Process:**
 
 1. validates admin permissions
 2. sends `m.room.tombstone`
 3. kicks all members
-4. removes business metadata
+4. removes business metadata (and any bundle references)
 5. requester leaves the room last
 
-The room is marked as deleted but remains in Synapse history.
+The room is marked as deleted but remains in Synapse history. Deleting a space
+does not delete the rooms inside it (they simply lose that organisational
+parent), which is standard Matrix behaviour.
 
 ---
 
@@ -207,9 +241,11 @@ The module stores additional room metadata, including:
 - `visible`
 - `access_type`
 - `price`
-- `room_kind`
+- `room_kind` — `"group"` or `"space"`
 
-This data is persisted using custom database helpers.
+This data is persisted using custom database helpers. `get_visible_rooms`
+returns rows where `room_kind IN ('group', 'space')`, so both appear in
+discover.
 
 ---
 
@@ -222,6 +258,8 @@ modules:
   - module: modules.room_service.module.RoomServiceModule
     config:
       admin_user_id: "@admin:example.com"
-      admin_token: "SYNAPSE_ADMIN_TOKEN"
+      admin_token_file: "/path/to/admin_token.txt"
       homeserver: "https://matrix.example.com"
 ```
+
+Keep the admin token file out of version control (add it to `.gitignore`).
