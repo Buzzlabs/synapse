@@ -1021,5 +1021,67 @@ class RoomService:
             user_id,
             len(joined_rooms),
         )
+
+        try:
+            await self._admin_join(space_id, user_id)
+        except Exception as e:
+            logger.error(
+                "invite_space: failed to join the space itself space=%s user=%s error=%s",
+                space_id,
+                user_id,
+                str(e),
+            )
  
         return joined_rooms
+
+    async def list_space_children(self, space_id: str) -> list[dict]:
+        """
+        Retorna a lista completa das salas dentro de um space, cada uma com
+        room_id, name e member_count. Usa o admin, então enxerga também as
+        salas privadas (diferente do getRoomHierarchy do cliente).
+        """
+        logger.info("list_space_children: start space_id=%s", space_id)
+ 
+        room_ids = await self._get_space_children(space_id)
+ 
+        result = []
+        for room_id in room_ids:
+            # nome da sala (m.room.name)
+            name = "Sem nome"
+            try:
+                state_events = await self.api.get_state_events_in_room(
+                    room_id,
+                    [("m.room.name", "")],
+                )
+                for ev in state_events:
+                    name = ev.content.get("name", "Sem nome")
+                    break
+            except Exception:
+                logger.warning(
+                    "list_space_children: failed to read name room=%s",
+                    room_id,
+                )
+ 
+            # contagem de membros
+            member_count = 0
+            try:
+                users = await self.store.get_users_in_room(room_id)
+                member_count = len(users)
+            except Exception:
+                logger.warning(
+                    "list_space_children: failed to count members room=%s",
+                    room_id,
+                )
+ 
+            result.append({
+                "room_id": room_id,
+                "name": name,
+                "member_count": member_count,
+            })
+ 
+        logger.info(
+            "list_space_children: space_id=%s returning %d rooms",
+            space_id,
+            len(result),
+        )
+        return result

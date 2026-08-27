@@ -17,6 +17,7 @@ from .resources.change_access_type import ChangeAccessTypeResource
 from .resources.delete_room import DeleteRoomResource
 from modules.room_service.resources.is_admin import IsAdminResource
 from .resources.invite_space import InviteSpaceResource
+from .resources.space_children import SpaceChildrenResource
  
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,11 @@ class RoomServiceModule:
         api.register_web_resource(
             "/_synapse/room_service/invite_space",
             InviteSpaceResource(api, service),
+        )
+
+        api.register_web_resource(
+            "/_synapse/room_service/space_children",
+            SpaceChildrenResource(api, service),
         )
         
     async def check_event_allowed(
