@@ -67,5 +67,9 @@ modules:
     config:
       google_api_key_file: "/data/google_api_key.txt"
       timezone: "America/Sao_Paulo"
-  # - module: modules.bundle_service.module.BundleServiceModule
+  - module: modules.room_streams_service.module.RoomStreamsServiceModule
+    config:
+      admin_user_id: "@admin:localhost"
+      admin_token_file: "/data/admin_token.txt"
+      homeserver: "http://localhost:3000"
 # vim:ft=yaml
