@@ -767,6 +767,9 @@ class RoomService:
 
         payload = json.dumps({"user_id": user_id}).encode()
 
+        logger.info(f"ADMIN TOKEN RAW: {self.admin_token}")
+        logger.info(f"AUTH HEADER: Bearer {self.admin_token}")
+
         response = await self.agent.request(
             b"POST",
             url.encode(),

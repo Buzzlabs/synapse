@@ -1,0 +1,204 @@
+# Schedule Service Module for Matrix Synapse
+
+This module exposes **HTTP endpoints** to show upcoming events for a room,
+backed by **Google Calendar**. Each room points to its own calendar, and the
+module fetches that calendar's events server-side.
+
+The Google API key stays on the server (in `homeserver.yaml`) and is never
+sent to the frontend: the frontend asks Synapse for a room's events, and
+Synapse calls Google.
+
+---
+
+## Features
+
+- per-room events: each room maps to a Google Calendar (`room_calendars` table)
+- fetch upcoming events for a room from Google Calendar
+- admins configure which calendar a room uses
+- the Google API key never leaves the server
+
+---
+
+## How it works
+
+1. Synapse loads the module on startup
+2. The module initializes a `ScheduleService`
+3. Custom HTTP endpoints are registered under:
+   /\_synapse/schedule_service/\*
+4. Callers use these endpoints:
+   - an admin sets which calendar a room uses (set_calendar)
+   - the frontend reads the room's calendar id (get_calendar) and its upcoming
+     events (list_events)
+5. For events, the module calls the Google Calendar API server-side using the
+   configured API key, filters the result, and returns JSON
+
+The module stores only the room → calendar mapping. The events themselves live
+in Google Calendar, not in the database.
+
+---
+
+## Registered endpoints
+
+All endpoints are **POST** with a JSON body.
+
+- /\_synapse/schedule_service/list_events
+- /\_synapse/schedule_service/get_calendar
+- /\_synapse/schedule_service/set_calendar
+
+---
+
+### List events
+
+POST /list_events
+
+Returns the upcoming events for a room's calendar (from today onward, ordered
+by start time). A room with no calendar configured returns an empty list — not
+an error.
+
+**Body:**
+
+- `room_id` (required)
+- `limit` (optional, default 6, max 50)
+- `time_min` (optional ISO timestamp; defaults to the start of today, UTC)
+
+**Response:**
+
+- `roomId`
+- `items` — array of events, each with `id`, `status`, `summary`,
+  `description`, `location`, `start`, `end`, `htmlLink`
+
+Cancelled events and events without a start are filtered out.
+
+**Errors:**
+
+- `400` – room_id missing or invalid limit
+- `502` – the Google Calendar request failed
+
+---
+
+### Get calendar
+
+POST /get_calendar
+
+Returns which calendar a room is configured to use. Cheap (no Google call) —
+meant to pre-fill the admin form.
+
+**Body:**
+
+- `room_id` (required)
+
+**Response:**
+
+- `roomId`
+- `calendarId` – the configured calendar id, or `null` if none
+
+**Errors:**
+
+- `400` – room_id missing
+
+---
+
+### Set calendar (admin only)
+
+POST /set_calendar
+
+Sets which Google Calendar a room uses. Requires a **global Synapse admin**
+(the requester is identified from the access token; non-admins get `403`).
+
+Upsert: creates the mapping if it doesn't exist, updates it otherwise.
+
+**Body:**
+
+- `room_id` (required)
+- `calendar_id` (required) – e.g. `abc123@group.calendar.google.com`
+
+**Response:**
+
+- `roomId`
+- `calendarId`
+
+**Errors:**
+
+- `400` – room_id or calendar_id missing
+- `403` – requester is not a global admin
+
+---
+
+## Google setup
+
+The module needs a Google API key with the **Google Calendar API enabled** on
+the project:
+
+1. Google Cloud Console → APIs & Services → Library → enable "Google Calendar API"
+2. Credentials → create an API key
+3. Restrict the key: Application restrictions → IP addresses (the server's IP)
+   in production; API restrictions → restrict to Google Calendar API only
+
+The calendar a room reads must be accessible to that key — a public calendar,
+or one shared appropriately. For a quick test, the public Brazilian holidays
+calendar works: `pt.brazilian#holiday@group.v.calendar.google.com`.
+
+---
+
+## Database
+
+Table `room_calendars`:
+
+```sql
+CREATE TABLE public.room_calendars (
+    room_id     text NOT NULL,
+    calendar_id text NOT NULL,
+    created_at  int8 NOT NULL,
+    updated_at  int8 NOT NULL,
+    PRIMARY KEY (room_id),
+    FOREIGN KEY (room_id)
+        REFERENCES public.room_business(room_id)
+        ON DELETE CASCADE
+);
+```
+
+The Synapse database user needs privileges on this table:
+
+```sql
+ALTER TABLE room_calendars OWNER TO <synapse_user>;
+```
+
+Notes:
+
+- one row per room (`room_id` is the primary key).
+- the FK to `room_business` means a room must exist there before it can get a
+  calendar. Timestamps are epoch milliseconds (`int8`), matching the other
+  modules' tables.
+
+---
+
+## Configuration
+
+Example `homeserver.yaml` configuration:
+
+```yaml
+modules:
+    - module: modules.schedule_service.module.ScheduleServiceModule
+      config:
+          google_api_key_file: "/path/to/google_api_key.txt"
+          timezone: "America/Sao_Paulo"
+```
+
+- `google_api_key_file` (or `google_api_key` inline) is **required** — the
+  module fails to load without it.
+- `timezone` is optional (defaults to `America/Sao_Paulo`).
+
+Keep the API key file out of version control (add it to `.gitignore`).
+
+---
+
+## Testing
+
+```
+PYTHONPATH=. pytest -vv modules/schedule_service/tests/
+```
+
+Covers: room without a configured calendar (returns empty, no Google call),
+the admin check on writes (403 for non-admins), the event filtering
+(cancelled/no-start dropped), limit validation, and a Google failure surfacing
+as 502.

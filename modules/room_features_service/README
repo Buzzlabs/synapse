@@ -1,0 +1,184 @@
+# Room Features Service Module for Matrix Synapse
+
+This module exposes **HTTP endpoints** to enable/disable optional per-room
+features (feature flags), stored in the `room_features` table.
+
+Each feature toggles an optional tab/section in the room UI (e.g. the VODs
+tab, the events tab). A feature that is not set is treated as **disabled**.
+
+This is a **UI/capability toggle**, not access control: it decides whether a
+room *shows* a feature, not who may read the room's content. Access to the
+room itself is handled elsewhere (membership, paywall, etc.).
+
+---
+
+## Features
+
+- store per-room feature flags in a dedicated table (`room_features`)
+- read a single flag, or all flags for a room
+- toggle a flag (global Synapse admins only)
+- missing flag = disabled (reads never 404 on an unset feature)
+- generic by design: any feature key works, so new features (events, cuts,
+  polls, ...) don't require code changes to this module
+
+---
+
+## How it works
+
+1. Synapse loads the module on startup
+2. The module initializes a `RoomFeaturesService`
+3. Custom HTTP endpoints are registered under:
+   /\_synapse/room_features/\*
+4. The frontend calls these endpoints:
+   - on room load, to decide which tabs to show
+   - from room settings, when an admin toggles a feature
+5. The module reads/writes the `room_features` table and returns JSON
+
+---
+
+## Registered endpoints
+
+All endpoints are **POST** with a JSON body (same convention as
+`room_service`).
+
+- /\_synapse/room_features/get
+- /\_synapse/room_features/list
+- /\_synapse/room_features/set
+
+---
+
+### Get one feature
+
+POST /get
+
+Returns whether a single feature is enabled for a room. An unset feature
+returns `enabled: false` (never 404).
+
+**Body:**
+
+- `room_id` (required)
+- `feature` (required) – e.g. `"vods"`, `"events"`
+
+**Response:**
+
+- `roomId`
+- `feature`
+- `enabled`
+
+**Errors:**
+
+- `400` – room_id or feature missing
+
+---
+
+### List all features
+
+POST /list
+
+Returns every feature flag set for a room, as a map. Absent features are
+simply not present in the map (treated as disabled by the caller).
+
+**Body:**
+
+- `room_id` (required)
+
+**Response:**
+
+- `roomId`
+- `features` – object like `{ "vods": true, "events": false }`
+
+**Errors:**
+
+- `400` – room_id missing
+
+---
+
+### Set a feature (admin only)
+
+POST /set
+
+Enables or disables a feature for a room. Requires a **global Synapse admin**
+(the requester is identified from the access token; non-admins get `403`).
+
+Upsert: creates the row if it doesn't exist, updates it otherwise.
+
+**Body:**
+
+- `room_id` (required)
+- `feature` (required)
+- `enabled` (required, boolean)
+
+**Response:**
+
+- `roomId`
+- `feature`
+- `enabled`
+
+**Errors:**
+
+- `400` – room_id/feature/enabled missing or `enabled` not a boolean
+- `403` – requester is not a global admin
+
+---
+
+## Database
+
+Table `room_features`:
+
+```sql
+CREATE TABLE public.room_features (
+    room_id     text    NOT NULL,
+    feature     text    NOT NULL,
+    enabled     boolean NOT NULL DEFAULT false,
+    created_at  int8    NOT NULL,
+    updated_at  int8    NOT NULL,
+    PRIMARY KEY (room_id, feature),
+    FOREIGN KEY (room_id)
+        REFERENCES public.room_business(room_id)
+        ON DELETE CASCADE
+);
+CREATE INDEX room_features_room_idx ON public.room_features (room_id);
+```
+
+Notes:
+
+- `(room_id, feature)` is the primary key: one row per feature per room.
+- The FK to `room_business` means a room must exist there before it can have
+  features. Timestamps are epoch milliseconds (`int8`), matching the other
+  modules' tables.
+- The Synapse database user needs privileges on this table:
+
+```sql
+ALTER TABLE room_features OWNER TO <synapse_user>;
+```
+
+---
+
+## Configuration
+
+Example `homeserver.yaml` configuration:
+
+```yaml
+modules:
+    - module: modules.room_features_service.module.RoomFeaturesServiceModule
+      config:
+          admin_user_id: "@admin:localhost"
+          admin_token_file: "/path/to/admin_token.txt"
+          homeserver: "http://localhost:3000"
+```
+
+`admin_token_file` is read at startup (waiting briefly for the file to
+appear, like `room_service`). `admin_token` (inline) is also accepted as a
+fallback.
+
+---
+
+## Testing
+
+```
+PYTHONPATH=. pytest -vv modules/room_features_service/tests/
+```
+
+Covers: missing-flag-returns-false, enabled/disabled reads, the full list
+map, admin enforcement on writes (403 for non-admins), the upsert, and
+input validation.

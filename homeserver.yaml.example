@@ -48,10 +48,24 @@ admins:
   - "@admin:localhost"
 
 modules:
+  - module: modules.vod_service.module.VodServiceModule
+    config:
+      object_storage_base_url: "https://objectstorage.<REGIAO>.oraclecloud.com"
+      namespace: "<NAMESPACE>"
+      bucket: "vod-teste"
   - module: modules.room_service.module.RoomServiceModule
     config:
-      admin_user_id: "@admin:localhost"
-      admin_token: "syt_"
-      homeserver: "http://localhost:XXXX"
+      admin_user_id: "@admin:localhost" # IMPORTANTE!!! PRECISA ADAPTAR CASO A CASO
+      admin_token_file: "/data/admin_token.txt"
+      homeserver: "http://localhost:3000"
+  - module: modules.room_features_service.module.RoomFeaturesServiceModule
+    config:
+      admin_user_id: "@admin:localhost" # IMPORTANTE!!! PRECISA ADAPTAR CASO A CASO
+      admin_token_file: "/data/admin_token.txt"
+      homeserver: "http://localhost:3000"
+  - module: modules.schedule_service.module.ScheduleServiceModule
+    config:
+      google_api_key_file: "/data/google_api_key.txt"
+      timezone: "America/Sao_Paulo"
   - module: modules.bundle_service.module.BundleServiceModule
 # vim:ft=yaml
