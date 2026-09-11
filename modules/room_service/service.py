@@ -781,9 +781,6 @@ class RoomService:
 
         payload = json.dumps({"user_id": user_id}).encode()
 
-        logger.info(f"ADMIN TOKEN RAW: {self.admin_token}")
-        logger.info(f"AUTH HEADER: Bearer {self.admin_token}")
-
         response = await self.agent.request(
             b"POST",
             url.encode(),
@@ -929,3 +926,162 @@ class RoomService:
             action="leave",
             ratelimit=False,
         )
+
+    # ---------------- GET SPACE CHILDREN ----------------
+    async def _get_space_children(self, space_id: str) -> list[str]:
+        """
+        Retorna os room_ids das salas que estão dentro do space.
+ 
+        No Matrix, cada sala filha é um evento de estado do tipo
+        'm.space.child' no space, onde o state_key é o room_id do filho.
+        Um child só conta como ativo se o conteúdo tiver 'via' (quando o
+        filho é removido, o Element manda um m.space.child com content
+        vazio {} — sem 'via' — pra "desfazer" a relação).
+        """
+        try:
+            state_events = await self.api.get_state_events_in_room(
+                space_id,
+                [("m.space.child", None)],   # None = todos os state_keys desse tipo
+            )
+        except Exception:
+            logger.exception(
+                "_get_space_children: failed to read children space_id=%s",
+                space_id,
+            )
+            return []
+ 
+        children = []
+        for ev in state_events:
+            # state_key é o room_id do filho
+            child_id = ev.state_key
+            # child ativo tem 'via'; content vazio = child removido
+            via = ev.content.get("via")
+            if child_id and via:
+                children.append(child_id)
+ 
+        logger.info(
+            "_get_space_children: space_id=%s found %d children",
+            space_id,
+            len(children),
+        )
+        return children
+ 
+ 
+    # ---------------- INVITE SPACE ----------------
+    async def invite_space(self, user_id: str, space_id: str):
+        """
+        Dá ao usuário acesso a todas as salas dentro de um space pago.
+        """
+        logger.info(
+            "invite_space: start user=%s space_id=%s",
+            user_id,
+            space_id,
+        )
+ 
+        room_ids = await self._get_space_children(space_id)
+ 
+        if not room_ids:
+            logger.warning(
+                "invite_space: no child rooms found space_id=%s",
+                space_id,
+            )
+            raise SynapseError(404, "Space not found or empty")
+ 
+        logger.info(
+            "invite_space: %d child rooms found space_id=%s",
+            len(room_ids),
+            space_id,
+        )
+ 
+        joined_rooms = []
+ 
+        for room_id in room_ids:
+            try:
+                logger.debug(
+                    "invite_space: joining user=%s room=%s",
+                    user_id,
+                    room_id,
+                )
+ 
+                result = await self._admin_join(room_id, user_id)
+ 
+                if result in ("joined", "already_joined"):
+                    joined_rooms.append(room_id)
+ 
+            except Exception as e:
+                logger.error(
+                    "invite_space: failed join room=%s user=%s error=%s",
+                    room_id,
+                    user_id,
+                    str(e),
+                )
+ 
+        logger.info(
+            "invite_space: finished user=%s rooms_joined=%d",
+            user_id,
+            len(joined_rooms),
+        )
+
+        try:
+            await self._admin_join(space_id, user_id)
+        except Exception as e:
+            logger.error(
+                "invite_space: failed to join the space itself space=%s user=%s error=%s",
+                space_id,
+                user_id,
+                str(e),
+            )
+ 
+        return joined_rooms
+
+    async def list_space_children(self, space_id: str) -> list[dict]:
+        """
+        Retorna a lista completa das salas dentro de um space, cada uma com
+        room_id, name e member_count. Usa o admin, então enxerga também as
+        salas privadas (diferente do getRoomHierarchy do cliente).
+        """
+        logger.info("list_space_children: start space_id=%s", space_id)
+ 
+        room_ids = await self._get_space_children(space_id)
+ 
+        result = []
+        for room_id in room_ids:
+            # nome da sala (m.room.name)
+            name = "Sem nome"
+            try:
+                state_events = await self.api.get_state_events_in_room(
+                    room_id,
+                    [("m.room.name", "")],
+                )
+                for ev in state_events:
+                    name = ev.content.get("name", "Sem nome")
+                    break
+            except Exception:
+                logger.warning(
+                    "list_space_children: failed to read name room=%s",
+                    room_id,
+                )
+ 
+            # contagem de membros
+            member_count = 0
+            try:
+                users = await self.store.get_users_in_room(room_id)
+                member_count = len(users)
+            except Exception:
+                logger.warning(
+                    "list_space_children: failed to count members room=%s",
+                    room_id,
+                )
+ 
+            result.append({
+                "room_id": room_id,
+                "name": name,
+                "member_count": member_count,
+            })
+ 
+        logger.info(
+            "list_space_children: space_id=%s returning %d rooms",
+            space_id,
+            len(result),
+        )
+        return result

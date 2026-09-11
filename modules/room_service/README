@@ -20,8 +20,10 @@ This module allows Synapse to:
 - discover visible rooms and spaces with metadata
 - create rooms and spaces with business configuration
 - join users to rooms using keywords
+- grant access to every room inside a space (paid or free)
+- list the rooms contained in a space
 - control room visibility (public / private)
-- manage paid and free rooms
+- manage paid and free rooms and spaces
 - change access type dynamically
 - safely delete rooms and spaces
 - enforce admin-only operations
@@ -35,11 +37,18 @@ other rooms (like a folder). This module treats spaces as first-class rooms:
 they live in the same `room_business` table, differ only by `room_kind`, and go
 through the same endpoints.
 
-Spaces here are **organisational only**: they are always free (`price = 0`) and
-do not gate access to the rooms inside them (Matrix keeps space membership and
-child-room access independent). A public space appears in discover alongside
-public rooms; a private space is not listed. Selling/bundling rooms is handled
-separately (bundles), not by spaces.
+A space can be **free** or **paid**, following the same rules as a room:
+
+- **Free space** (`price = 0`) — organisational. Entering it grants access to the
+  rooms inside it (the user is joined to every child room), with no charge.
+- **Paid space** (`price > 0`) — the same, behind a payment. Buying the space
+  joins the user to every room inside it. This replaces the former **bundle**
+  concept: a paid space is a package of rooms sold together.
+
+Access to the child rooms is granted by **joining the user into each child room**
+(via the admin API). By default Matrix keeps space membership and child-room
+access independent; this module bridges that gap through the invite_space
+endpoint, which joins the user to all children (and to the space itself).
 
 ---
 
@@ -64,6 +73,8 @@ All endpoints are exposed under:
 
 - /\_synapse/room_service/discover
 - /\_synapse/room_service/invite
+- /\_synapse/room_service/invite_space
+- /\_synapse/room_service/space_children
 - /\_synapse/room_service/create
 - /\_synapse/room_service/is_admin
 - /\_synapse/room_service/changevisibility
@@ -82,16 +93,16 @@ Returns a list of visible rooms and spaces with metadata.
 
 **Response fields:**
 
-- `room_id`
-- `name`
-- `room_kind` — `"group"` (normal room) or `"space"`
-- `access_type`
-- `price`
-- `keyword`
-- `member_count`
+- room_id
+- name
+- room_kind — "group" (normal room) or "space"
+- access_type
+- price
+- keyword
+- member_count
 
 Only rooms where the **admin user is a member** are returned. The frontend can
-use `room_kind` to list spaces separately from rooms (e.g. under a "Public
+use room_kind to list spaces separately from rooms (e.g. under a "Public
 spaces" filter).
 
 ---
@@ -110,8 +121,65 @@ Joins a user to a room using a keyword.
 
 **Errors:**
 
-- `404` – room not found
-- `500` – admin join failed
+- 404 – room not found
+- 500 – admin join failed
+
+---
+
+### Enter a space (join all its rooms)
+
+POST /invite_space
+
+Joins the requesting user to every room inside a space, and to the space itself.
+Used both for paid spaces (after payment) and free spaces (on entry).
+
+**Body fields:**
+
+- space_id
+
+**Behavior:**
+
+- reads the space's child rooms from the m.space.child state events
+- joins the user to each child room via the admin API
+- joins the user to the space itself
+- returns the list of rooms the user was joined to
+
+**Errors:**
+
+- 400 – missing space_id
+- 404 – space not found or has no child rooms
+
+Note: child rooms are read from Matrix state (not a separate table), so the list
+always reflects the current contents of the space. A child removed from the space
+(an m.space.child event with empty content) is ignored.
+
+---
+
+### List the rooms inside a space
+
+POST /space_children
+
+Returns the full list of rooms contained in a space, each with its name and
+member count. Runs with the admin, so it returns **all** child rooms — including
+private ones that the requesting user is not yet a member of. This powers the
+"what's included" view before a user enters or buys a space.
+
+**Body fields:**
+
+- space_id
+
+**Response fields (per room):**
+
+- room_id
+- name
+- member_count
+
+Requires an authenticated user (not admin-only): it is the space's public
+"shop window".
+
+**Errors:**
+
+- 400 – missing space_id
 
 ---
 
@@ -124,25 +192,28 @@ Creates a new room (or space) with business metadata.
 **Requirements:**
 
 - requester must be a Synapse admin
-- `keyword` must be unique
+- keyword must be unique
 
 **Body fields:**
 
-- `name`
-- `keyword` (unique)
-- `visible`
-- `access_type` (`public` / `private`)
-- `price`
-- `room_kind` (optional, default `"group"`) — pass `"space"` to create a space
+- name
+- keyword (unique)
+- visible
+- access_type (public / private)
+- price
+- room_kind (optional, default "group") — pass "space" to create a space
 
 **Behavior:**
 
-- creates the room, or a space when `room_kind` is `"space"` (adds
-  `creation_content: { type: "m.space" }`)
+- creates the room, or a space when room_kind is "space" (adds
+  creation_content: { type: "m.space" })
 - sets initial power levels
-- stores metadata in the database (including `room_kind`)
+- stores metadata in the database (including room_kind)
 - ensures the admin user joins the room
 - configures join rules based on access type
+
+A paid space is created just like a paid room: access_type "private" with a
+price > 0. A free space uses access_type "public" and price 0.
 
 ---
 
@@ -150,16 +221,16 @@ Creates a new room (or space) with business metadata.
 
 POST /changevisibility
 
-Updates the visibility and price of a room.
+Updates the visibility and price of a room or space.
 
 **Rules:**
 
-- invisible rooms always have `price = 0`
+- invisible rooms always have price = 0
 - private visible rooms require a price
 - public rooms cannot have a price
 
-Note: spaces are always public/free, so their visibility is toggled with
-`price = 0` and never hits the "private visible requires price" rule.
+These rules apply to spaces too: a free space is public (price 0), a paid space is
+private with a price, exactly like a room.
 
 ---
 
@@ -171,9 +242,9 @@ Returns the current visibility configuration.
 
 **Response fields:**
 
-- `visible`
-- `price`
-- `access_type`
+- visible
+- price
+- access_type
 
 ---
 
@@ -181,13 +252,13 @@ Returns the current visibility configuration.
 
 POST /changeprice
 
-Updates the price of a room.
+Updates the price of a room or space.
 
 **Rules:**
 
 - only allowed for visible rooms
-- private rooms require `price > 0`
-- public rooms must have `price = 0`
+- private rooms require price > 0
+- public rooms must have price = 0
 
 Admin-only operation.
 
@@ -201,13 +272,13 @@ Changes the room access type.
 
 **Supported values:**
 
-- `public`
-- `private`
+- public
+- private
 
 **Behavior:**
 
-- public → private may assign a default price
-- private → public forces `price = 0`
+- public to private may assign a default price
+- private to public forces price = 0
 
 Admin-only operation.
 
@@ -222,9 +293,9 @@ Deletes a room or space safely.
 **Process:**
 
 1. validates admin permissions
-2. sends `m.room.tombstone`
+2. sends m.room.tombstone
 3. kicks all members
-4. removes business metadata (and any bundle references)
+4. removes business metadata
 5. requester leaves the room last
 
 The room is marked as deleted but remains in Synapse history. Deleting a space
@@ -237,21 +308,21 @@ parent), which is standard Matrix behaviour.
 
 The module stores additional room metadata, including:
 
-- `keyword`
-- `visible`
-- `access_type`
-- `price`
-- `room_kind` — `"group"` or `"space"`
+- keyword
+- visible
+- access_type
+- price
+- room_kind — "group" or "space"
 
-This data is persisted using custom database helpers. `get_visible_rooms`
-returns rows where `room_kind IN ('group', 'space')`, so both appear in
+This data is persisted using custom database helpers. get_visible_rooms
+returns rows where room_kind IN ('group', 'space'), so both appear in
 discover.
 
 ---
 
 ## Configuration
 
-Example `homeserver.yaml` configuration:
+Example homeserver.yaml configuration:
 
 ```yaml
 modules:
@@ -262,4 +333,4 @@ modules:
       homeserver: "https://matrix.example.com"
 ```
 
-Keep the admin token file out of version control (add it to `.gitignore`).
+Keep the admin token file out of version control (add it to .gitignore).

@@ -67,5 +67,5 @@ modules:
     config:
       google_api_key_file: "/data/google_api_key.txt"
       timezone: "America/Sao_Paulo"
-  - module: modules.bundle_service.module.BundleServiceModule
+  # - module: modules.bundle_service.module.BundleServiceModule
 # vim:ft=yaml

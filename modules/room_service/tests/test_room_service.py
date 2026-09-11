@@ -400,6 +400,7 @@ async def test_delete_room_success(service, requester):
     service.store.db_pool.runInteraction = AsyncMock(side_effect=[
         (1, 0, "private"),
         None,
+        None,
     ])
 
     service._admin_get_room_members = AsyncMock(return_value=["@u:test"])
@@ -420,6 +421,7 @@ async def test_delete_room_kicks_all_members_except_requester(service, requester
     """
     service.store.db_pool.runInteraction = AsyncMock(side_effect=[
         (1, 0, "private"),
+        None,
         None,
     ])
 
