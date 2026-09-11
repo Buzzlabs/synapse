@@ -16,8 +16,8 @@ spec:
 
         # 🧠 SYNAPSE
         - name: synapse
-          image: synapse-docker-synapse
-          imagePullPolicy: Never
+          image: docker.buzzlabs.com.br/synapse
+          imagePullPolicy: Always 
           ports:
             - containerPort: 3000
           volumeMounts:
@@ -37,11 +37,12 @@ spec:
             - name: config
               mountPath: /data/localhost.signing.key
               subPath: localhost.signing.key
-
+        
         # 🔥 INIT ADMIN (SIDECAR)
         - name: init-admin
-          image: synapse-docker-synapse
-          imagePullPolicy: Never
+          image: docker.buzzlabs.com.br/synapse
+          imagePullPolicy: Always
+          
           command: ["/bin/sh", "/scripts/init-admin.sh"]
           volumeMounts:
             - name: scripts
@@ -49,7 +50,9 @@ spec:
 
             - name: data
               mountPath: /data
-
+        
+      imagePullSecrets:
+        - name: global-regcred
       volumes:
         # 💾 persistência
         - name: data

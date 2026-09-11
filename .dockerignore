@@ -11,6 +11,7 @@
 !Cargo.lock
 !Cargo.toml
 !build_rust.py
+!modules
 
 rust/target
 synapse/*.so

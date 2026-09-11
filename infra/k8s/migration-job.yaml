@@ -19,7 +19,7 @@ spec:
 
               echo "Rodando migrations..."
 
-              PGPASSWORD=synapse psql -h postgres -U synapse -d synapse <<EOF
+              PGPASSWORD=senhaDoBD psql -h postgres -U userDoBD -d synapse <<EOF
 
               CREATE TABLE IF NOT EXISTS public.bundles (
                   bundle_id uuid PRIMARY KEY,
