@@ -5,12 +5,12 @@ TOKEN_FILE="/data/admin_token.txt"
 HOMESERVER_URL="http://synapse:3000"
 
 DB_HOST="postgres"
-DB_USER="userDoDB"
+DB_USER="userDoBD"
 DB_NAME="synapse"
-DB_PASSWORD="senhaDoDB"
+DB_PASSWORD="senhaDoBD"
 
-EMAIL="emailDoAdmin@email.com"
-PASSWORD='senhaDoAdmin'
+EMAIL="matheus.silva@buzzlabs.com.br"
+PASSWORD='Xablau3521@!'
 
 echo "Removendo token antigo (se existir)..."
 rm -f "$TOKEN_FILE"
