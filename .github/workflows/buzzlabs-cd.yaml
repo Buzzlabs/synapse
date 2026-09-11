@@ -12,19 +12,11 @@
 name: Buzzlabs CD
 
 on:
+  pull_request:
+    branches: [develop]
   push:
     branches: [develop]
   workflow_dispatch: {}
-
-# Coalesce para o commit mais novo, de propósito: o GitHub guarda no máximo UM run
-# pendente por grupo, então se dois commits chegam durante um build em andamento só
-# o último é buildado. Para um CD que publica a ponta da develop isso é o certo. O
-# que NÃO pode ser cancelado é o run em andamento (daí cancel-in-progress: false):
-# cortar no meio deixaria imagem publicada sem o bump correspondente, e dois runs
-# simultâneos disputariam o push na main do Infra.
-concurrency:
-  group: buzzlabs-cd
-  cancel-in-progress: false
 
 permissions: {}
 
@@ -33,9 +25,48 @@ env:
   DEPLOYMENT: hetzner/k8s/matrix-buzzlabs/synapse-deployment.yaml
 
 jobs:
+  # Guarda de merge: o deployment do matrix-buzzlabs tem `strategy: Recreate`
+  # (PVC RWO), então imagem quebrada derruba o Matrix interno em vez de travar o
+  # rollout. Buildar no PR custa alguns minutos e evita descobrir isso em prod.
+  # Sem push e sem segredos — só prova que a imagem builda.
+  build-check:
+    name: Build da imagem (sem push)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: buzzlabs-build-check-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Build (sem push)
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: infra/synapse-docker/Dockerfile
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   build-and-deploy:
     name: Build, push e bump no Infra
     runs-on: ubuntu-24.04
+    # Coalesce para o commit mais novo: o GitHub guarda no máximo UM run pendente
+    # por grupo, então se dois commits chegam durante um build em andamento só o
+    # último é buildado — o certo para um CD que publica a ponta da develop. O que
+    # NÃO pode ser cancelado é o run em andamento (cancel-in-progress: false):
+    # cortar no meio deixaria imagem publicada sem o bump correspondente, e dois
+    # runs simultâneos disputariam o push na main do Infra.
+    concurrency:
+      group: buzzlabs-cd
+      cancel-in-progress: false
     # O workflow_dispatch aceita qualquer ref: sem esta guarda, um run manual a
     # partir de uma branch de feature buildaria aquele código e o deployaria em
     # matrix.buzzlabs.com.br. Rodar de outra ref fica visível como job pulado.
