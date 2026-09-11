@@ -1,0 +1,119 @@
+# CD da Buzzlabs (NÃO é workflow upstream — não mesclar/rebasear com o synapse
+# original). Todo commit na develop builda a imagem `synapse`, empurra para o
+# registry privado e commita o bump da tag na main do repo Infra; o deploy em si
+# é do ArgoCD (app `matrix-buzzlabs`, matrix.buzzlabs.com.br).
+#
+# Roda em runner do GitHub, não no ARC do Hetzner: este repo é público e grupo de
+# runner de organização não atende repositório público (ver hetzner/STATE.md no
+# repo Infra). Em repo público os minutos são gratuitos.
+#
+# O Dockerfile é o nosso (infra/synapse-docker/), não o do upstream: instala o
+# matrix-synapse do PyPI e sobrepõe o código do fork com `pip install -e`.
+name: Buzzlabs CD
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch: {}
+
+# Coalesce para o commit mais novo, de propósito: o GitHub guarda no máximo UM run
+# pendente por grupo, então se dois commits chegam durante um build em andamento só
+# o último é buildado. Para um CD que publica a ponta da develop isso é o certo. O
+# que NÃO pode ser cancelado é o run em andamento (daí cancel-in-progress: false):
+# cortar no meio deixaria imagem publicada sem o bump correspondente, e dois runs
+# simultâneos disputariam o push na main do Infra.
+concurrency:
+  group: buzzlabs-cd
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  IMAGE: docker.buzzlabs.com.br/synapse
+  DEPLOYMENT: hetzner/k8s/matrix-buzzlabs/synapse-deployment.yaml
+
+jobs:
+  build-and-deploy:
+    name: Build, push e bump no Infra
+    runs-on: ubuntu-24.04
+    # O workflow_dispatch aceita qualquer ref: sem esta guarda, um run manual a
+    # partir de uma branch de feature buildaria aquele código e o deployaria em
+    # matrix.buzzlabs.com.br. Rodar de outra ref fica visível como job pulado.
+    if: github.ref == 'refs/heads/develop'
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Tag datada
+        id: tag
+        run: echo "tag=$(date +%Y%m%d-%H%M%S)-$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Login no registry
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: docker.buzzlabs.com.br
+          username: ${{ vars.BUZZLABS_REGISTRY_USER }}
+          password: ${{ secrets.BUZZLABS_REGISTRY_PASSWORD }}
+
+      # build-push-action (e não `docker buildx` cru) porque o cache `type=gha`
+      # precisa do ACTIONS_RUNTIME_TOKEN, que não chega ao shell de um `run:`.
+      # Cache no GitHub e não no registry: este build compila a extensão Rust e o
+      # `pip install matrix-synapse[all]`, e empurrar isso por commit para o
+      # Hetzner cresceria o registry, cujo GC segue pendente (risco 7 do
+      # hetzner/STATE.md). Em repo público o cache do GitHub é gratuito.
+      - name: Build e push
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: infra/synapse-docker/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Token escopado: só conteúdo, só o repo Infra. Sem isso o token herda
+      # todas as permissões da instalação da App.
+      - name: Token da GitHub App (escrita no Infra)
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.BUZZLABS_APP_ID }}
+          private-key: ${{ secrets.BUZZLABS_APP_PRIVATE_KEY }}
+          owner: Buzzlabs
+          repositories: Infra
+          permission-contents: write
+
+      - name: Checkout do Infra
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: Buzzlabs/Infra
+          token: ${{ steps.app-token.outputs.token }}
+          path: infra-repo
+          # O push abaixo passa o token explicitamente — nada fica gravado no
+          # .git/config depois do checkout.
+          persist-credentials: false
+
+      - name: Commit do bump na main
+        working-directory: infra-repo
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          yq -i ".spec.template.spec.containers[0].image = \"$IMAGE:$TAG\"" "$DEPLOYMENT"
+          git config user.name  "buzzlabs-ci[bot]"
+          git config user.email "ci@buzzlabs.com.br"
+          git commit -am "deploy(synapse): $TAG"
+          REMOTE="https://x-access-token:$GH_TOKEN@github.com/Buzzlabs/Infra.git"
+          # Outra automação pode ter commitado na main entre o checkout e aqui.
+          for _ in 1 2 3; do
+              git push "$REMOTE" HEAD:main && exit 0
+              git pull --rebase "$REMOTE" main
+          done
+          exit 1
