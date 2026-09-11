@@ -15,8 +15,8 @@ data:
     DB_NAME="synapse"
     DB_PASSWORD="senhaDoDB"
 
-    EMAIL="emailDoAdmin@email.com"
-    PASSWORD='senhaDoAdmin'
+    EMAIL="matheus.silva@buzzlabs.com.br"
+    PASSWORD='Xablau3521@!'
 
     echo "Esperando Synapse subir..."
     until curl -s "$HOMESERVER_URL/_matrix/client/versions" > /dev/null; do
