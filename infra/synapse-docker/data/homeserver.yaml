@@ -91,5 +91,9 @@ modules:
     config:
       google_api_key_file: "/home/livia/BuzzLabs/synapse/google_api_key.txt"
       timezone: "America/Sao_Paulo"
-  # - module: modules.bundle_service.module.BundleServiceModule
+  - module: modules.room_streams_service.module.RoomStreamsServiceModule
+    config:
+      admin_user_id: "@admin:localhost" # IMPORTANTE!!! PRECISA ADAPTAR
+      admin_token_file: "/data/admin_token.txt"
+      homeserver: "http://syapse:3000"
 # vim:ft=yaml

@@ -74,3 +74,12 @@ CREATE TABLE public.room_calendars (
     FOREIGN KEY (room_id) REFERENCES public.room_business(room_id) ON DELETE CASCADE
 );
 ALTER TABLE room_calendars OWNER TO <synapse_user>;
+
+CREATE TABLE IF NOT EXISTS room_streams (
+    room_id     TEXT PRIMARY KEY REFERENCES room_business(room_id) ON DELETE CASCADE,
+    playback_url TEXT NOT NULL,
+    created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE room_streams OWNER TO <synapse_user>;
