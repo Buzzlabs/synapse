@@ -45,10 +45,8 @@ class RoomServiceModule:
 
         self.hs.room_service = service
 
-        api.register_third_party_rules_callbacks(
-            check_event_allowed=self.check_event_allowed,
-        )
-
+        # Spaces sao permitidos. O hook check_event_allowed abaixo permite
+        # todos os eventos; mantido (e nao registrado) para regras futuras.
 
         api.register_web_resource(
             "/_synapse/room_service/discover",
@@ -100,10 +98,6 @@ class RoomServiceModule:
         event,
         state_events,
     ):
-        if event.type == "m.room.create":
-            room_type = event.content.get("type")
-
-            if room_type == "m.space":
-                raise SynapseError(403, "Spaces não são permitidos.")
-
+        # Todos os eventos permitidos (spaces incluidos).
+        # Ponto de extensao para regras futuras de moderacao.
         return True, None

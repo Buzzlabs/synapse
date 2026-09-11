@@ -6,11 +6,14 @@ from room_service.module import RoomServiceModule
 
 
 @pytest.fixture
-def module():
+def module(tmp_path):
     api = Mock()
+    # o module.py le admin_token_file, entao criamos um arquivo temporario
+    token_file = tmp_path / "admin_token.txt"
+    token_file.write_text("token")
     config = {
         "admin_user_id": "@admin:test",
-        "admin_token": "token",
+        "admin_token_file": str(token_file),
         "homeserver": "http://localhost",
     }
 
@@ -20,18 +23,17 @@ def module():
 # ---------------- CHECK EVENT ALLOWED ----------------
 
 @pytest.mark.asyncio
-async def test_block_space_creation(module):
+async def test_allow_space_creation(module):
     """
-    Should reject creation of spaces (m.space).
+    Spaces are now allowed (previously blocked with 403).
     """
     event = Mock()
     event.type = "m.room.create"
     event.content = {"type": "m.space"}
 
-    with pytest.raises(SynapseError) as err:
-        await module.check_event_allowed(event, state_events={})
+    allowed, _ = await module.check_event_allowed(event, state_events={})
 
-    assert err.value.code == 403
+    assert allowed is True
 
 
 @pytest.mark.asyncio
