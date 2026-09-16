@@ -19,6 +19,10 @@ class YoutubeLiveService:
         que o front precisa: a URL para assistir (o widget) e a chave de
         ingestão (para a pessoa colar no OBS).
         """
+        is_admin = await self.api.is_user_admin(user_id)
+        if not is_admin:
+            raise SynapseError(403, "Only admins can start a broadcast")
+
         if not room_id:
             raise SynapseError(400, "missing room_id")
 
