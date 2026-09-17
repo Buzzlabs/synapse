@@ -72,4 +72,9 @@ modules:
       admin_user_id: "@admin:localhost"
       admin_token_file: "/data/admin_token.txt"
       homeserver: "http://localhost:3000"
+  - module: modules.youtube_live_service.module.YoutubeLiveServiceModule
+        config:
+          youtube_client_id: "123456789.apps.googleusercontent.com"
+          youtube_client_secret_file: "/data/youtube_client_secret.txt"
+          youtube_refresh_token_file: "/data/youtube_refresh_token.txt"
 # vim:ft=yaml
