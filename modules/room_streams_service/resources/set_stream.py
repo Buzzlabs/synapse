@@ -23,11 +23,13 @@ class SetStreamResource(DirectServeJsonResource):
             body = parse_json_object_from_request(request)
             room_id = body.get("room_id")
             playback_url = body.get("playback_url")
+            provider = body.get("provider", "fixed")  
 
             result = await self.service.set_stream(
                 user_id=user_id,
                 room_id=room_id,
                 playback_url=playback_url,
+                provider=provider,  
             )
 
             return 200, result
