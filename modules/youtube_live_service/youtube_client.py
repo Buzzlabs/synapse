@@ -11,11 +11,12 @@ A biblioteca do Google é SÍNCRONA (bloqueante). Synapse roda em cima do
 Twisted (reactor de um único thread) — chamar código bloqueante direto
 travaria o servidor inteiro enquanto espera a resposta do Google. Por isso
 cada chamada é despachada para uma thread separada via
-asyncio.get_event_loop().run_in_executor(...), e só o resultado (já pronto)
-volta para o código async normal.
+twisted.internet.threads.deferToThread (o jeito nativo do Twisted de fazer
+isso — asyncio.get_event_loop().run_in_executor não é confiável nesse
+ambiente, porque o Synapse roda sobre o reactor do Twisted, não o loop
+padrão do asyncio: dá "RuntimeError: await wasn't used with future").
 """
 
-import asyncio
 import logging
 import uuid
 from abc import ABC, abstractmethod
@@ -116,7 +117,7 @@ class RealYoutubeClient(YoutubeClient):
     def _create_broadcast_sync(self, title: str) -> YoutubeBroadcastInfo:
         """
         A parte síncrona/bloqueante de verdade — roda dentro de uma thread
-        (ver create_broadcast, que despacha esta função via run_in_executor).
+        (ver create_broadcast, que despacha esta função via deferToThread).
         """
         youtube = self._get_client()
 
@@ -177,11 +178,15 @@ class RealYoutubeClient(YoutubeClient):
     async def create_broadcast(self, title: str) -> YoutubeBroadcastInfo:
         logger.info("RealYoutubeClient: creating broadcast title=%s", title)
 
-        loop = asyncio.get_event_loop()
+        # Synapse roda sobre o reactor do Twisted, não o event loop puro do
+        # asyncio — run_in_executor não é confiável nesse ambiente ("await
+        # wasn't used with future"). deferToThread é o jeito nativo do
+        # Twisted de rodar código bloqueante numa thread; o Synapse sabe
+        # dar await num Deferred normalmente.
+        from twisted.internet.threads import deferToThread
+
         try:
-            # despacha a parte bloqueante (chamadas HTTP síncronas da lib
-            # do Google) para uma thread, sem travar o reactor do Synapse
-            info = await loop.run_in_executor(None, self._create_broadcast_sync, title)
+            info = await deferToThread(self._create_broadcast_sync, title)
         except Exception:
             logger.exception("RealYoutubeClient: failed to create broadcast title=%s", title)
             raise
