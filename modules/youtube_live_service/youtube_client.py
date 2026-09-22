@@ -21,6 +21,7 @@ import logging
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -121,12 +122,20 @@ class RealYoutubeClient(YoutubeClient):
         """
         youtube = self._get_client()
 
+        # scheduledStartTime é obrigatório para o YouTube, mesmo quando a
+        # transmissão vai começar imediatamente (a API não aceita "agora"
+        # implícito — precisa de um timestamp ISO 8601 em UTC).
+        scheduled_start_time = (
+            datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+        )
+
         # 1. cria o "evento" de transmissão
         broadcast_response = youtube.liveBroadcasts().insert(
             part="snippet,status,contentDetails",
             body={
                 "snippet": {
                     "title": title,
+                    "scheduledStartTime": scheduled_start_time,
                 },
                 "status": {
                     # "unlisted": não aparece em busca pública, mas quem tem
