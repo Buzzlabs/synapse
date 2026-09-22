@@ -60,7 +60,7 @@ moderator who isn't a global admin cannot start a broadcast.
 - `403` — the caller is not an admin.
 - `503` — YouTube credentials not configured yet (running in mock/dev mode).
 - `502` — the call to the YouTube API failed (network, expired credential,
-  quota exceeded, etc.).
+  quota exceeded, account not yet cleared for live streaming, etc.).
 
 ## Mock vs real client
 
@@ -72,7 +72,9 @@ The module automatically picks which implementation to use, based on config:
   credentials. Logs a clear `WARNING` every time it's used, so it's never
   mistaken for a real broadcast.
 - **Full credentials present** → uses `RealYoutubeClient`, which calls the
-  real API.
+  real API. Verified end-to-end against the real YouTube API, including the
+  full 3-step call chain returning a real broadcast, ingestion address and
+  stream key.
 
 ## Configuration
 
@@ -98,23 +100,26 @@ from starting.
 1. A company YouTube channel needs to exist.
 2. Create a project in Google Cloud Console and enable the **YouTube Data API
    v3** (which includes the Live Streaming API).
-3. Generate OAuth 2.0 credentials (type "Desktop" or "Web", depending on the
-   chosen authorization flow) — this gives you the `client_id` and
-   `client_secret`.
-4. Authorize those credentials **once**, logging in with the company
-   channel's account, to obtain a `refresh_token`. That token lets the
-   module refresh access automatically afterwards, without needing
-   interactive login again.
-5. Store `client_secret` and `refresh_token` in plain text files, outside
+3. Generate OAuth 2.0 credentials of type **"Web application"** (not
+   "Desktop") — the desktop type doesn't expose an editable redirect URI,
+   which is needed for the next step. Add
+   `https://developers.google.com/oauthplayground` as an authorized redirect
+   URI. This gives you the `client_id` and `client_secret`.
+4. If the OAuth consent screen is in "Testing" mode, add the Google account
+   that will authorize (the one tied to the company's YouTube channel) as a
+   **test user** — otherwise authorization fails with `access_denied`.
+5. Authorize those credentials **once** via the
+   [OAuth 2.0 Playground](https://developers.google.com/oauthplayground)
+   (use your own credentials, scope `https://www.googleapis.com/auth/youtube`,
+   then exchange the authorization code for tokens) to obtain a
+   `refresh_token`. That token lets the module refresh access automatically
+   afterwards, without needing interactive login again.
+6. Store `client_secret` and `refresh_token` in plain text files, outside
    git (add them to `.gitignore`, as already done with `admin_token.txt`).
-
-## Technical detail: threads
-
-The `google-api-python-client` library is synchronous (blocking). Since
-Synapse runs on top of Twisted (a single-threaded reactor), the real API call
-is dispatched to a separate thread via
-`loop.run_in_executor(None, self._create_broadcast_sync, title)`, so it
-doesn't block the whole server while waiting for Google's response.
+7. **New/unverified accounts may be blocked from live streaming for up to
+   24h** (YouTube's own anti-spam restriction, reason
+   `livePermissionBlocked`), independent of anything in this module. Using
+   an account with prior live-streaming history avoids this wait.
 
 ## Dependencies
 
@@ -132,15 +137,19 @@ the client, not at the top of the file).
 
 - `test_youtube_live_service.py` (4): admin check, response shape with the
   mock, validation of required `room_id`/`title`.
-- `test_real_youtube_client.py` (2): confirms the synchronous call is
-  correctly dispatched via a thread and that errors propagate, without
-  depending on real credentials (the HTTP part is mocked).
+- `test_real_youtube_client.py` (2): confirms the blocking call is correctly
+  dispatched to a thread and that errors propagate, without depending on real
+  credentials (the HTTP part is mocked).
 
 ## Open questions / pending decisions
 
 - **Simultaneous broadcast limit.** Not yet validated whether the YouTube
   account in use supports multiple simultaneous broadcasts (in case more
-  than one room starts a Live at the same time).
+  than one room starts a Live at the same time). Google's docs mention up to
+  3 broadcasts bound to a single stream; anecdotal reports suggest a
+  higher per-channel cap, but this isn't confirmed officially.
 - **Broadcast `privacyStatus`.** Currently hardcoded as `"unlisted"` in the
   code (`_create_broadcast_sync`). To be evaluated whether this should be
-  configurable or if `unlisted` is final.
+  configurable or if `unlisted` is final. Note that `unlisted` broadcasts are
+  still reachable by anyone with the `watch_url`, directly on YouTube,
+  outside of Element — relevant if a Live ever needs to be paywalled.
