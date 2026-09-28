@@ -101,4 +101,7 @@ modules:
       youtube_client_id: "123456789.apps.googleusercontent.com"
       youtube_client_secret_file: "/data/youtube_client_secret.txt"
       youtube_refresh_token_file: "/data/youtube_refresh_token.txt"
+      # Only for local development without real credentials (returns FAKE
+      # broadcasts; never enable in production):
+      # youtube_use_mock: true
 # vim:ft=yaml

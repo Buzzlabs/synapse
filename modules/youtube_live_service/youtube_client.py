@@ -43,6 +43,28 @@ class YoutubeClient(ABC):
         ...
 
 
+class YoutubeNotConfiguredError(Exception):
+    """
+    Levantada quando não há como falar com o YouTube: nem credenciais
+    completas, nem o mock foi pedido explicitamente. O service converte
+    isso em HTTP 503.
+    """
+
+
+class UnconfiguredYoutubeClient(YoutubeClient):
+    """
+    Usado quando a config do módulo está incompleta/errada e o mock NÃO foi
+    pedido explicitamente (youtube_use_mock). Falha alto em vez de devolver
+    uma chave falsa que parece real.
+    """
+
+    def __init__(self, reason: str):
+        self.reason = reason
+
+    async def create_broadcast(self, title: str) -> YoutubeBroadcastInfo:
+        raise YoutubeNotConfiguredError(self.reason)
+
+
 class MockYoutubeClient(YoutubeClient):
     """
     Implementação falsa, usada enquanto não temos credenciais OAuth do

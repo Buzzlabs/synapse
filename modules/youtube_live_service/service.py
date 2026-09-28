@@ -2,12 +2,18 @@ import logging
 
 from synapse.api.errors import SynapseError
 
-from .youtube_client import YoutubeClient
+from .youtube_client import YoutubeClient, YoutubeNotConfiguredError
 
 logger = logging.getLogger(__name__)
 
 
 class YoutubeLiveService:
+    """
+    Cria transmissões no YouTube sob demanda, quando alguém clica
+    "Iniciar transmissão" numa sala. Diferente do room_streams_service
+    (canal fixo, URL configurada manualmente), aqui cada "iniciar" gera
+    uma transmissão NOVA no canal único da empresa.
+    """
 
     def __init__(self, api, youtube_client: YoutubeClient):
         self.api = api
@@ -18,6 +24,9 @@ class YoutubeLiveService:
         Cria uma nova transmissão no YouTube para a sala. Retorna os dados
         que o front precisa: a URL para assistir (o widget) e a chave de
         ingestão (para a pessoa colar no OBS).
+
+        Admin-only, seguindo o mesmo padrão do resto do sistema (criar
+        sala/space, habilitar features, configurar canal fixo).
         """
         is_admin = await self.api.is_user_admin(user_id)
         if not is_admin:
@@ -38,10 +47,9 @@ class YoutubeLiveService:
 
         try:
             broadcast = await self.youtube_client.create_broadcast(title.strip())
-        except NotImplementedError:
-            # credenciais reais ainda não configuradas
-            logger.error("start_broadcast: youtube client not configured yet")
-            raise SynapseError(503, "YouTube integration not configured yet")
+        except YoutubeNotConfiguredError as e:
+            logger.error("start_broadcast: youtube integration not configured: %s", e)
+            raise SynapseError(503, "YouTube integration not configured")
         except Exception:
             logger.exception(
                 "start_broadcast: failed to create youtube broadcast room_id=%s",

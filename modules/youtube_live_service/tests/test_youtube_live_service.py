@@ -3,7 +3,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 from synapse.api.errors import SynapseError
 from modules.youtube_live_service.service import YoutubeLiveService
-from modules.youtube_live_service.youtube_client import MockYoutubeClient
+from modules.youtube_live_service.youtube_client import (
+    MockYoutubeClient,
+    UnconfiguredYoutubeClient,
+)
 
 
 def make_service(is_admin=True):
@@ -61,3 +64,23 @@ async def test_start_broadcast_missing_title():
         await service.start_broadcast(user_id="@admin:localhost", room_id="!r:localhost", title="   ")
 
     assert exc.value.code == 400
+
+
+@pytest.mark.asyncio
+async def test_start_broadcast_returns_503_when_integration_not_configured():
+    api = MagicMock()
+    api.is_user_admin = AsyncMock(return_value=True)
+    service = YoutubeLiveService(
+        api=api,
+        youtube_client=UnconfiguredYoutubeClient("missing or unreadable config: youtube_client_id"),
+    )
+
+    with pytest.raises(SynapseError) as exc:
+        await service.start_broadcast(
+            user_id="@admin:localhost",
+            room_id="!room:localhost",
+            title="Minha live",
+        )
+
+    assert exc.value.code == 503
+    assert "not configured" in exc.value.msg
