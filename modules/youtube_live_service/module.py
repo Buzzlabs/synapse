@@ -26,7 +26,7 @@ def _read_secret_file(path: str | None) -> str | None:
         return None
 
 
-def build_youtube_client(config: dict) -> YoutubeClient:
+def build_youtube_client(config: dict, api) -> YoutubeClient:
     """
     Escolhe o client conforme a config. Ordem de decisão:
 
@@ -58,7 +58,7 @@ def build_youtube_client(config: dict) -> YoutubeClient:
 
     if not missing:
         logger.info("YoutubeLiveServiceModule: using RealYoutubeClient")
-        return RealYoutubeClient(client_id, client_secret, refresh_token)
+        return RealYoutubeClient(client_id, client_secret, refresh_token, api=api)
 
     reason = "missing or unreadable config: " + ", ".join(missing)
     logger.error(
@@ -79,7 +79,7 @@ class YoutubeLiveServiceModule:
     def __init__(self, config: dict, api):
         self.api = api
 
-        youtube_client = build_youtube_client(config)
+        youtube_client = build_youtube_client(config, api)
         service = YoutubeLiveService(api=api, youtube_client=youtube_client)
 
         api.register_web_resource(

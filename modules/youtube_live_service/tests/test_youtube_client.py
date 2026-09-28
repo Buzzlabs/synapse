@@ -1,5 +1,5 @@
 import re
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -37,6 +37,7 @@ class TestRealYoutubeClientSync:
             client_id="fake-id",
             client_secret="fake-secret",
             refresh_token="fake-refresh-token",
+            api=MagicMock(),
         )
 
         fake_youtube = MagicMock()
@@ -54,7 +55,7 @@ class TestRealYoutubeClientSync:
         }
         fake_youtube.liveBroadcasts.return_value.bind.return_value.execute.return_value = {}
 
-        client._youtube = fake_youtube  # pula _get_client (não bate na rede real)
+        client._build_client = MagicMock(return_value=fake_youtube)  # sem rede
         return client, fake_youtube
 
     def test_returns_broadcast_info_from_api_responses(self):
@@ -116,3 +117,70 @@ class TestRealYoutubeClientSync:
 
         with pytest.raises(RuntimeError, match="Scheduled start time is required"):
             client._create_broadcast_sync("Minha live")
+
+
+class TestRealYoutubeClientAsync:
+    """
+    Antes não dava para testar create_broadcast: o deferToThread cru do
+    Twisted exigia o reactor rodando. Com api.defer_to_thread injetado, dá.
+    """
+
+    def make_client(self):
+        api = MagicMock()
+        # defer_to_thread falso: executa a função na hora, como o real faria
+        api.defer_to_thread = AsyncMock(side_effect=lambda f, *a, **k: f(*a, **k))
+        client = RealYoutubeClient(
+            client_id="fake-id",
+            client_secret="fake-secret",
+            refresh_token="fake-refresh-token",
+            api=api,
+        )
+        return client, api
+
+    @pytest.mark.asyncio
+    async def test_create_broadcast_runs_in_synapse_thread_pool(self):
+        client, api = self.make_client()
+        expected = YoutubeBroadcastInfo("abc", "https://y/abc", "rtmp://x", "key")
+
+        with patch.object(client, "_create_broadcast_sync", return_value=expected) as sync:
+            result = await client.create_broadcast("Minha live")
+
+        assert result == expected
+        # `sync` já é o mock que substituiu o método: é ele que deve ter
+        # sido entregue ao thread pool do Synapse, junto com o título.
+        api.defer_to_thread.assert_awaited_once_with(sync, "Minha live")
+        sync.assert_called_once_with("Minha live")
+
+    @pytest.mark.asyncio
+    async def test_create_broadcast_propagates_errors(self):
+        client, _ = self.make_client()
+
+        with patch.object(client, "_create_broadcast_sync", side_effect=RuntimeError("API down")):
+            with pytest.raises(RuntimeError, match="API down"):
+                await client.create_broadcast("Vai falhar")
+
+    def test_each_call_builds_its_own_google_client(self):
+        """
+        Regressão do review: o Resource do Google (httplib2) não é thread-safe,
+        então dois broadcasts não podem compartilhar o mesmo client.
+        """
+        client, _ = self.make_client()
+        built = []
+
+        def fake_build():
+            fake = MagicMock()
+            fake.liveBroadcasts.return_value.insert.return_value.execute.return_value = {"id": "b"}
+            fake.liveStreams.return_value.insert.return_value.execute.return_value = {
+                "id": "s",
+                "cdn": {"ingestionInfo": {"ingestionAddress": "rtmp://x", "streamName": "k"}},
+            }
+            built.append(fake)
+            return fake
+
+        client._build_client = fake_build
+
+        client._create_broadcast_sync("Live 1")
+        client._create_broadcast_sync("Live 2")
+
+        assert len(built) == 2
+        assert built[0] is not built[1]

@@ -11,10 +11,7 @@ A biblioteca do Google é SÍNCRONA (bloqueante). Synapse roda em cima do
 Twisted (reactor de um único thread) — chamar código bloqueante direto
 travaria o servidor inteiro enquanto espera a resposta do Google. Por isso
 cada chamada é despachada para uma thread separada via
-twisted.internet.threads.deferToThread (o jeito nativo do Twisted de fazer
-isso — asyncio.get_event_loop().run_in_executor não é confiável nesse
-ambiente, porque o Synapse roda sobre o reactor do Twisted, não o loop
-padrão do asyncio: dá "RuntimeError: await wasn't used with future").
+ModuleApi.defer_to_thread.
 """
 
 import logging
@@ -105,21 +102,21 @@ class RealYoutubeClient(YoutubeClient):
     # escopo mínimo necessário para gerenciar transmissões ao vivo
     SCOPES = ["https://www.googleapis.com/auth/youtube"]
 
-    def __init__(self, client_id: str, client_secret: str, refresh_token: str):
+    def __init__(self, client_id: str, client_secret: str, refresh_token: str, *, api):
         self.client_id = client_id
         self.client_secret = client_secret
         self.refresh_token = refresh_token
-        self._youtube = None  # criado sob demanda (é objeto síncrono)
+        self.api = api
 
-    def _get_client(self):
+    def _build_client(self):
         """
-        Monta o client síncrono do google-api-python-client, autenticado
-        via refresh_token (não precisa de login interativo — o refresh
-        token já foi obtido uma vez, manualmente, autorizando o canal).
-        """
-        if self._youtube is not None:
-            return self._youtube
+        Monta um client NOVO do google-api-python-client, autenticado via
+        refresh_token (não precisa de login interativo — o refresh token já
+        foi obtido uma vez, manualmente, autorizando o canal).
 
+        Um client novo a cada chamada, de propósito: o Resource do Google não é thread-safe, e várias lives
+        podem ser iniciadas ao mesmo tempo em threads diferentes. Como iniciar uma live é raro, o custo de montar um client (mais um refresh de token) é desprezível.
+        """
         # imports aqui dentro (não no topo do arquivo) para não exigir as
         # libs do Google instaladas quando só o MockYoutubeClient é usado
         from google.oauth2.credentials import Credentials
@@ -134,15 +131,13 @@ class RealYoutubeClient(YoutubeClient):
             scopes=self.SCOPES,
         )
 
-        self._youtube = build("youtube", "v3", credentials=credentials)
-        return self._youtube
+        return build("youtube", "v3", credentials=credentials)
 
     def _create_broadcast_sync(self, title: str) -> YoutubeBroadcastInfo:
         """
         A parte síncrona/bloqueante de verdade — roda dentro de uma thread
-        (ver create_broadcast, que despacha esta função via deferToThread).
         """
-        youtube = self._get_client()
+        youtube = self._build_client()
 
         # scheduledStartTime é obrigatório para o YouTube, mesmo quando a
         # transmissão vai começar imediatamente (a API não aceita "agora"
@@ -209,15 +204,8 @@ class RealYoutubeClient(YoutubeClient):
     async def create_broadcast(self, title: str) -> YoutubeBroadcastInfo:
         logger.info("RealYoutubeClient: creating broadcast title=%s", title)
 
-        # Synapse roda sobre o reactor do Twisted, não o event loop puro do
-        # asyncio — run_in_executor não é confiável nesse ambiente ("await
-        # wasn't used with future"). deferToThread é o jeito nativo do
-        # Twisted de rodar código bloqueante numa thread; o Synapse sabe
-        # dar await num Deferred normalmente.
-        from twisted.internet.threads import deferToThread
-
         try:
-            info = await deferToThread(self._create_broadcast_sync, title)
+            info = await self.api.defer_to_thread(self._create_broadcast_sync, title)
         except Exception:
             logger.exception("RealYoutubeClient: failed to create broadcast title=%s", title)
             raise
