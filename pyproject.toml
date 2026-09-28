@@ -95,6 +95,11 @@ dependencies = [
 
     # This is used for parsing multipart responses
     "python-multipart>=0.0.9",
+
+    # Used by modules/youtube_live_service to talk to the YouTube Live
+    # Streaming API (OAuth2 credentials + the googleapiclient library).
+    "google-auth>=2.0.0",
+    "google-api-python-client>=2.0.0",
 ]
 
 [project.optional-dependencies]
