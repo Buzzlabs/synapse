@@ -21,7 +21,13 @@ async def test_get_stream_defaults_to_fixed_when_unconfigured():
 
     result = await svc.get_stream("!room:localhost")
 
-    assert result == {"room_id": "!room:localhost", "playback_url": None, "provider": "fixed"}
+    assert result == {
+        "room_id": "!room:localhost",
+        "playback_url": None,
+        "provider": "fixed",
+        "youtube_broadcast_id": None,
+        "youtube_watch_url": None,
+    }
 
 
 @pytest.mark.asyncio
@@ -193,3 +199,89 @@ async def test_set_stream_writes_db_when_admin():
     )
 
     svc.store.db_pool.runInteraction.assert_awaited_once()
+
+
+class TestRequireYoutubeRoom:
+    """
+    Chamado pelo youtube_live_service antes de criar um broadcast, para não
+    gastar uma chamada à API do Google contra uma sala inexistente ou
+    configurada como canal fixo.
+    """
+
+    @pytest.mark.asyncio
+    async def test_raises_404_when_room_has_no_stream_config(self):
+        svc = make_service()
+        svc.store.db_pool.runInteraction.return_value = None
+
+        with pytest.raises(SynapseError) as exc:
+            await svc.require_youtube_room("!room:localhost")
+
+        assert exc.value.code == 404
+
+    @pytest.mark.asyncio
+    async def test_raises_400_when_provider_is_fixed(self):
+        svc = make_service()
+        svc.store.db_pool.runInteraction.return_value = {
+            "room_id": "!room:localhost",
+            "playback_url": "https://cdn.example/live.m3u8",
+            "provider": "fixed",
+            "youtube_broadcast_id": None,
+            "youtube_watch_url": None,
+        }
+
+        with pytest.raises(SynapseError) as exc:
+            await svc.require_youtube_room("!room:localhost")
+
+        assert exc.value.code == 400
+
+    @pytest.mark.asyncio
+    async def test_passes_silently_when_provider_is_youtube(self):
+        svc = make_service()
+        svc.store.db_pool.runInteraction.return_value = {
+            "room_id": "!room:localhost",
+            "playback_url": None,
+            "provider": "youtube",
+            "youtube_broadcast_id": None,
+            "youtube_watch_url": None,
+        }
+
+        await svc.require_youtube_room("!room:localhost")  # não levanta
+
+
+@pytest.mark.asyncio
+async def test_set_youtube_broadcast_writes_to_db():
+    svc = make_service()
+
+    await svc.set_youtube_broadcast(
+        "!room:localhost", "abc123XYZ_9", "https://www.youtube.com/watch?v=abc123XYZ_9"
+    )
+
+    svc.store.db_pool.runInteraction.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_stream_includes_youtube_fields():
+    svc = make_service()
+    svc.store.db_pool.runInteraction.return_value = {
+        "room_id": "!room:localhost",
+        "playback_url": None,
+        "provider": "youtube",
+        "youtube_broadcast_id": "abc123XYZ_9",
+        "youtube_watch_url": "https://www.youtube.com/watch?v=abc123XYZ_9",
+    }
+
+    result = await svc.get_stream("!room:localhost")
+
+    assert result["youtube_broadcast_id"] == "abc123XYZ_9"
+    assert result["youtube_watch_url"] == "https://www.youtube.com/watch?v=abc123XYZ_9"
+
+
+@pytest.mark.asyncio
+async def test_get_stream_unconfigured_room_has_null_youtube_fields():
+    svc = make_service()
+    svc.store.db_pool.runInteraction.return_value = None
+
+    result = await svc.get_stream("!room:localhost")
+
+    assert result["youtube_broadcast_id"] is None
+    assert result["youtube_watch_url"] is None
