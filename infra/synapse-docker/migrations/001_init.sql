@@ -79,13 +79,18 @@ CREATE TABLE IF NOT EXISTS room_streams (
     room_id      TEXT PRIMARY KEY REFERENCES room_business(room_id) ON DELETE CASCADE,
     playback_url TEXT,
     provider     TEXT NOT NULL DEFAULT 'fixed'
-                 CHECK (provider IN ('fixed', 'youtube')),
+                 CONSTRAINT room_streams_provider_check CHECK (provider IN ('fixed', 'youtube')),
+    youtube_broadcast_id TEXT,
+    youtube_watch_url    TEXT,
     created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     -- só exige playback_url quando o provider é 'fixed'
     CONSTRAINT room_streams_fixed_requires_url
-        CHECK (provider != 'fixed' OR playback_url IS NOT NULL)
+        CHECK (provider != 'fixed' OR playback_url IS NOT NULL),
+
+    CONSTRAINT room_streams_youtube_fields_match
+        CHECK ((youtube_broadcast_id IS NULL) = (youtube_watch_url IS NULL))
 );
 
 ALTER TABLE room_streams OWNER TO <synapse_user>;
