@@ -4,32 +4,57 @@ Creates YouTube live broadcasts on demand, powering the room Live feature.
 
 ## Model: dynamic broadcast, single channel
 
-Unlike `room_streams_service` (fixed channel, where the `playback_url` is
-registered manually once per room), this module creates a **new broadcast
-every time** someone starts a Live — inside a single YouTube channel, the
-company's own.
+Unlike `room_streams_service`'s `fixed` provider (a channel configured once,
+manually), this module creates a **new broadcast every time** someone starts
+a Live — inside a single YouTube channel, the company's own.
 
 On YouTube, channel and broadcast are different concepts: a channel can have
 many broadcasts over time. There's no need for a channel per room — the
 module always creates a new broadcast on the same channel, tied to the
 configured credentials.
 
+This module never reads or writes `room_streams` directly — see "Room
+validation and persistence" below.
+
 ## Flow
 
-1. An admin clicks "Start broadcast" in a room, in Element.
+1. An admin clicks "Start broadcast" in a room configured with
+   `provider: "youtube"`, in Element.
 2. The frontend calls `POST /_synapse/youtube_live_service/start_broadcast`.
-3. The module authenticates with the YouTube Live Streaming API and makes 3
-   calls:
+3. The module confirms the room is configured for YouTube (via
+   `room_streams_service`), then authenticates with the YouTube Live
+   Streaming API and makes 3 calls:
    - `liveBroadcasts.insert` — creates the broadcast "event" (the video).
    - `liveStreams.insert` — creates the ingestion "pipe", which generates the
      RTMP server and the stream key.
    - `liveBroadcasts.bind` — links the two together.
 4. The response carries the `watch_url` (to build the widget/player) and the
    `ingestion_address` + `stream_key` (for the admin to paste into OBS).
+5. The broadcast is persisted back to `room_streams` (again via
+   `room_streams_service`), so it's recoverable later even if this response
+   never reaches the client.
 
 The module **does not configure OBS** — that's still done manually by the
 person streaming, pasting the received key. This is inherent to any
 streaming service, not a limitation of this module.
+
+## Room validation and persistence
+
+`start_broadcast` doesn't touch `room_streams` itself — it calls two methods
+on `room_streams_service`'s instance (obtained from `api._hs`, see that
+module's README for the cross-module pattern and the required load order in
+`homeserver.yaml`):
+
+- **`require_youtube_room(room_id)`**, before calling YouTube: `404` if the
+  room has no stream configuration, `400` if it's configured with a
+  different provider. This runs before the (expensive, side-effecting) call
+  to YouTube, so a request against a nonexistent or misconfigured room fails
+  cheaply instead of creating an orphan broadcast on the company channel.
+- **`set_youtube_broadcast(room_id, broadcast_id, watch_url)`**, after
+  YouTube confirms creation. If this write fails, the request still returns
+  `200`: the broadcast already exists for real on YouTube at this point, and
+  withholding the stream key from the admin would be worse than losing the
+  `room_streams` association. The failure is logged at `ERROR`.
 
 ## Endpoint
 
@@ -56,8 +81,11 @@ moderator who isn't a global admin cannot start a broadcast.
 ```
 
 **Errors:**
-- `400` — missing `room_id` or `title`.
+- `400` — missing `room_id` or `title`, or the room is configured with a
+  provider other than `youtube`.
 - `403` — the caller is not an admin.
+- `404` — the room has no stream configuration at all (never called
+  `set_stream`).
 - `503` — no working YouTube client is configured: credentials are missing
   or unreadable, and `youtube_use_mock` was not set. See "Mock vs real
   client" below.
@@ -93,6 +121,14 @@ in this order:
 
 ```yaml
 modules:
+  # Must come first: this module looks up room_streams_service's instance
+  # via api._hs at load time.
+  - module: modules.room_streams_service.module.RoomStreamsServiceModule
+    config:
+      admin_user_id: "@admin:localhost"
+      admin_token_file: "/data/admin_token.txt"
+      homeserver: "http://localhost:3000"
+
   - module: modules.youtube_live_service.module.YoutubeLiveServiceModule
     config:
       # client_id is not secret (it's public by nature in the OAuth flow),
@@ -106,6 +142,9 @@ modules:
       # broadcasts; never enable in production):
       # youtube_use_mock: true
 ```
+
+If `room_streams_service` isn't loaded first, `YoutubeLiveServiceModule`
+raises `RuntimeError` at startup.
 
 If any of the three credential keys is missing or unreadable, and
 `youtube_use_mock` is not set, the module still loads (it doesn't prevent
@@ -137,6 +176,14 @@ is fixed.
    24h** (YouTube's own anti-spam restriction, reason
    `livePermissionBlocked`), independent of anything in this module. Using
    an account with prior live-streaming history avoids this wait.
+8. **In "Testing" mode, the refresh_token expires after 7 days.** Publish
+   the app (OAuth consent screen → "Publish App") before relying on this in
+   anything beyond a one-off manual test — otherwise the integration will
+   silently stop working a week in. If a refresh later fails with
+   `invalid_grant` or `unauthorized_client`, double-check the client_id /
+   client_secret pasted into the Playground match `homeserver.yaml` exactly
+   — a refresh_token is only valid for the exact credential pair that
+   requested it.
 
 ## Technical detail: threads
 
@@ -175,17 +222,22 @@ address — no manual step needed in YouTube Studio.
 pip install google-auth google-api-python-client
 ```
 
-Only required when `RealYoutubeClient` is actually used — `MockYoutubeClient`
-doesn't depend on them (the Google imports live inside the method that builds
-the client, not at the top of the file).
+Declared in `pyproject.toml` (verified: a clean virtualenv install pulls
+both in, required by `matrix-synapse`). Only required when `RealYoutubeClient`
+is actually used — `MockYoutubeClient` doesn't depend on them (the Google
+imports live inside the method that builds the client, not at the top of
+the file).
 
 ## Tests
 
-`PYTHONPATH=. pytest modules/youtube_live_service/tests/` — 25 tests:
+`PYTHONPATH=. pytest modules/youtube_live_service/tests/` — 30 tests:
 
 - `test_youtube_live_service.py`: admin check, response shape with the mock,
-  validation of required `room_id`/`title`, and the `503` returned when no
-  client is configured.
+  validation of required `room_id`/`title`, the `503` returned when no
+  client is configured, and room validation/persistence (`404`/`400` from
+  `require_youtube_room` propagate and are checked *before* calling YouTube;
+  a successful broadcast is persisted via `set_youtube_broadcast`; a failure
+  to persist doesn't fail the request).
 - `test_youtube_client.py`: `MockYoutubeClient`'s fake data;
   `_create_broadcast_sync` against a mocked `googleapiclient` Resource
   (request bodies sent, including `scheduledStartTime`, the bind call, error
@@ -196,6 +248,9 @@ the client, not at the top of the file).
   `UnconfiguredYoutubeClient` otherwise — including the "secret mounted at
   the wrong path" scenario), and `_read_secret_file` not crashing Synapse
   startup on an unreadable file.
+
+See `room_streams_service`'s README for its own tests covering
+`require_youtube_room` and `set_youtube_broadcast` themselves.
 
 ## Open questions / pending decisions
 
