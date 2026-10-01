@@ -90,3 +90,21 @@ class RoomStreamsService:
             broadcast_id,
             watch_url,
         )
+
+    async def clear_youtube_broadcast(self, user_id: str, room_id: str) -> None:
+        """
+        Chamado quando alguém encerra uma live (removendo o widget no
+        Matrix). Admin-only, mesmo padrão do resto do módulo -- quem pode
+        mandar o widget pode encerrar, mas quem limpa o registro no banco
+        segue a mesma regra de permissão que set_stream.
+        """
+        is_admin = await self._is_admin(user_id)
+        if not is_admin:
+            raise SynapseError(403, "Only admins can clear the stream")
+
+        if not room_id:
+            raise SynapseError(400, "missing room_id")
+
+        await self.store.db_pool.runInteraction(
+            "clear_youtube_broadcast", db.clear_youtube_broadcast, room_id
+        )

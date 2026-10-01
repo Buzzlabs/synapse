@@ -47,3 +47,15 @@ def set_youtube_broadcast(txn, room_id, broadcast_id, watch_url):
         """,
         (broadcast_id, watch_url, room_id),
     )
+
+def clear_youtube_broadcast(txn, room_id):
+    """Chamado ao encerrar uma live: zera os campos sem mexer em
+    playback_url/provider (diferente de set_stream, que muda a config)."""
+    txn.execute(
+        """
+        UPDATE room_streams
+        SET youtube_broadcast_id = NULL, youtube_watch_url = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE room_id = ?
+        """,
+        (room_id,),
+    )
