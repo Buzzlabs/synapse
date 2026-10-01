@@ -8,7 +8,6 @@ logger = logging.getLogger(__name__)
 
 
 class RoomStreamsService:
-
     VALID_PROVIDERS = ("fixed", "youtube")
 
     def __init__(self, api, homeserver: str, admin_user_id: str):
@@ -24,33 +23,26 @@ class RoomStreamsService:
             logger.exception("_is_admin: error checking admin for %s", user_id)
             return False
 
-    # ---------------- GET STREAM ----------------
     async def get_stream(self, room_id: str):
-        
         if not room_id:
             raise SynapseError(400, "missing room_id")
 
-        row = await self.store.db_pool.runInteraction(
-            "get_stream",
-            db.get_stream,
-            room_id,
-        )
+        row = await self.store.db_pool.runInteraction("get_stream", db.get_stream, room_id)
 
         if row is None:
-            return {"room_id": room_id, "playback_url": None, "provider": "fixed"}
+            return {
+                "room_id": room_id,
+                "playback_url": None,
+                "provider": "fixed",
+                "youtube_broadcast_id": None,
+                "youtube_watch_url": None,
+            }
 
         return row
 
-    # ---------------- SET STREAM ----------------
-    async def set_stream(self, user_id: str, room_id: str, playback_url: str | None, provider: str = "fixed"):
-        
+    async def set_stream(self, user_id: str, room_id: str, playback_url, provider: str = "fixed"):
         is_admin = await self._is_admin(user_id)
         if not is_admin:
-            logger.warning(
-                "set_stream: permission denied user=%s room_id=%s",
-                user_id,
-                room_id,
-            )
             raise SynapseError(403, "Only admins can set the stream channel")
 
         if not room_id:
@@ -64,22 +56,37 @@ class RoomStreamsService:
                 raise SynapseError(400, "missing playback_url")
             playback_url = playback_url.strip()
         else:
-            # youtube: não guardamos URL fixa aqui
             playback_url = None
 
-        await self.store.db_pool.runInteraction(
-            "set_stream",
-            db.set_stream,
-            room_id,
-            playback_url,
-            provider,
-        )
-
-        logger.info(
-            "set_stream: room_id=%s provider=%s updated by user=%s",
-            room_id,
-            provider,
-            user_id,
-        )
+        await self.store.db_pool.runInteraction("set_stream", db.set_stream, room_id, playback_url, provider)
 
         return {"room_id": room_id, "playback_url": playback_url, "provider": provider}
+
+    async def require_youtube_room(self, room_id: str) -> None:
+        """
+        Confirma que a sala existe e está configurada como provider='youtube',
+        antes de criar um broadcast pra ela. Chamado pelo youtube_live_service
+        no início de start_broadcast, para não gastar uma chamada à API do
+        Google contra uma sala inexistente ou configurada como canal fixo.
+        """
+        row = await self.store.db_pool.runInteraction("get_stream", db.get_stream, room_id)
+
+        if row is None:
+            raise SynapseError(404, "Room has no stream configuration; configure it first")
+
+        if row["provider"] != "youtube":
+            raise SynapseError(
+                400,
+                f"room is configured with provider={row['provider']!r}, not 'youtube'",
+            )
+
+    async def set_youtube_broadcast(self, room_id: str, broadcast_id: str, watch_url: str) -> None:
+        """Persiste o broadcast recém-criado, chamado pelo youtube_live_service
+        depois que o YouTube confirma a criação."""
+        await self.store.db_pool.runInteraction(
+            "set_youtube_broadcast",
+            db.set_youtube_broadcast,
+            room_id,
+            broadcast_id,
+            watch_url,
+        )
