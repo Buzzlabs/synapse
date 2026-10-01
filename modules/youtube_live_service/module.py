@@ -72,6 +72,21 @@ def build_youtube_client(config: dict, api) -> YoutubeClient:
 
 class YoutubeLiveServiceModule:
     """
+    homeserver.yaml:
+
+    modules:
+      - module: modules.youtube_live_service.module.YoutubeLiveServiceModule
+        config:
+          # client_id não é segredo (é público por natureza no OAuth), pode
+          # ficar direto no yaml. client_secret e refresh_token são
+          # sensíveis: ficam em arquivos fora do git, iguais ao
+          # admin_token_file que já usamos em outros módulos.
+          youtube_client_id: "123456789.apps.googleusercontent.com"
+          youtube_client_secret_file: "/data/youtube_client_secret.txt"
+          youtube_refresh_token_file: "/data/youtube_refresh_token.txt"
+          # Só para desenvolvimento local, sem credenciais reais:
+          # youtube_use_mock: true
+
     Sem credenciais completas e sem youtube_use_mock, o módulo carrega
     normalmente (não derruba o Synapse), mas start_broadcast responde 503.
     """
@@ -79,8 +94,19 @@ class YoutubeLiveServiceModule:
     def __init__(self, config: dict, api):
         self.api = api
 
+        room_streams_service = getattr(api._hs, "room_streams_service", None)
+        if room_streams_service is None:
+            raise RuntimeError(
+                "YoutubeLiveServiceModule requires room_streams_service to be "
+                "loaded first in homeserver.yaml's modules list."
+            )
+
         youtube_client = build_youtube_client(config, api)
-        service = YoutubeLiveService(api=api, youtube_client=youtube_client)
+        service = YoutubeLiveService(
+            api=api,
+            youtube_client=youtube_client,
+            room_streams_service=room_streams_service,
+        )
 
         api.register_web_resource(
             "/_synapse/youtube_live_service/start_broadcast",

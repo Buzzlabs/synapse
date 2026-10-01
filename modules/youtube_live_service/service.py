@@ -15,9 +15,10 @@ class YoutubeLiveService:
     uma transmissão NOVA no canal único da empresa.
     """
 
-    def __init__(self, api, youtube_client: YoutubeClient):
+    def __init__(self, api, youtube_client: YoutubeClient, room_streams_service):
         self.api = api
         self.youtube_client = youtube_client
+        self.room_streams_service = room_streams_service
 
     async def start_broadcast(self, *, user_id: str, room_id: str, title: str):
         """
@@ -37,6 +38,8 @@ class YoutubeLiveService:
 
         if not title or not title.strip():
             raise SynapseError(400, "missing title")
+
+        await self.room_streams_service.require_youtube_room(room_id)
 
         logger.info(
             "start_broadcast: creating youtube broadcast room_id=%s user=%s title=%s",
@@ -62,6 +65,17 @@ class YoutubeLiveService:
             room_id,
             broadcast.broadcast_id,
         )
+
+        try:
+            await self.room_streams_service.set_youtube_broadcast(
+                room_id, broadcast.broadcast_id, broadcast.watch_url
+            )
+        except Exception:
+            logger.exception(
+                "start_broadcast: broadcast created but failed to persist room_id=%s broadcast_id=%s",
+                room_id,
+                broadcast.broadcast_id,
+            )
 
         return {
             "room_id": room_id,
