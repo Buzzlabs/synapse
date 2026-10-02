@@ -3,7 +3,6 @@ import logging
 from .service import RoomStreamsService
 from .resources.get_stream import GetStreamResource
 from .resources.set_stream import SetStreamResource
-from .resources.clear_youtube_broadcast import ClearYoutubeBroadcastResource
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +33,5 @@ class RoomStreamsServiceModule:
         api.register_web_resource(
             "/_synapse/room_streams_service/set_stream",
             SetStreamResource(api, service),
-        )
-        api.register_web_resource(
-            "/_synapse/room_streams_service/clear_youtube_broadcast",
-            ClearYoutubeBroadcastResource(api, service),
         )
         logger.info("RoomStreamsServiceModule loaded")
