@@ -85,3 +85,5 @@ google_api_key.txt
 admin_token.txt
 vod_service_token.txt
 google_api_key.txt
+youtube_client_secret.txt
+youtube_refresh_token.txt
