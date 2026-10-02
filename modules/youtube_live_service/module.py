@@ -1,13 +1,9 @@
 import logging
 
 from .service import YoutubeLiveService
-from .youtube_client import (
-    MockYoutubeClient,
-    RealYoutubeClient,
-    UnconfiguredYoutubeClient,
-    YoutubeClient,
-)
+from .youtube_client import MockYoutubeClient, RealYoutubeClient, UnconfiguredYoutubeClient, YoutubeClient
 from .resources.start_broadcast import StartBroadcastResource
+from .resources.stop_broadcast import StopBroadcastResource
 
 logger = logging.getLogger(__name__)
 
@@ -19,22 +15,11 @@ def _read_secret_file(path: str | None) -> str | None:
         with open(path, "r") as f:
             return f.read().strip() or None
     except OSError:
-        # FileNotFoundError, PermissionError, IsADirectoryError, ...
-        # Não derruba o Synapse na inicialização: o módulo cai no estado
-        # "não configurado" (503), com o motivo no log.
         logger.exception("YoutubeLiveServiceModule: cannot read secret file: %s", path)
         return None
 
 
 def build_youtube_client(config: dict, api) -> YoutubeClient:
-    """
-    Escolhe o client conforme a config. Ordem de decisão:
-
-    1. youtube_use_mock: true  -> MockYoutubeClient (só dev/teste, loga WARNING).
-    2. client_id + client_secret + refresh_token presentes -> RealYoutubeClient.
-    3. qualquer outro caso -> UnconfiguredYoutubeClient: loga ERROR dizendo o
-       que falta e o endpoint responde 503. Nunca cai no mock em silêncio.
-    """
     if config.get("youtube_use_mock") is True:
         logger.warning(
             "YoutubeLiveServiceModule: youtube_use_mock is enabled -- broadcasts "
@@ -63,34 +48,13 @@ def build_youtube_client(config: dict, api) -> YoutubeClient:
     reason = "missing or unreadable config: " + ", ".join(missing)
     logger.error(
         "YoutubeLiveServiceModule: YouTube integration NOT configured (%s). "
-        "start_broadcast will return 503. Set youtube_use_mock: true for local "
-        "development.",
+        "start_broadcast will return 503. Set youtube_use_mock: true for local development.",
         reason,
     )
     return UnconfiguredYoutubeClient(reason)
 
 
 class YoutubeLiveServiceModule:
-    """
-    homeserver.yaml:
-
-    modules:
-      - module: modules.youtube_live_service.module.YoutubeLiveServiceModule
-        config:
-          # client_id não é segredo (é público por natureza no OAuth), pode
-          # ficar direto no yaml. client_secret e refresh_token são
-          # sensíveis: ficam em arquivos fora do git, iguais ao
-          # admin_token_file que já usamos em outros módulos.
-          youtube_client_id: "123456789.apps.googleusercontent.com"
-          youtube_client_secret_file: "/data/youtube_client_secret.txt"
-          youtube_refresh_token_file: "/data/youtube_refresh_token.txt"
-          # Só para desenvolvimento local, sem credenciais reais:
-          # youtube_use_mock: true
-
-    Sem credenciais completas e sem youtube_use_mock, o módulo carrega
-    normalmente (não derruba o Synapse), mas start_broadcast responde 503.
-    """
-
     def __init__(self, config: dict, api):
         self.api = api
 
@@ -111,6 +75,10 @@ class YoutubeLiveServiceModule:
         api.register_web_resource(
             "/_synapse/youtube_live_service/start_broadcast",
             StartBroadcastResource(api, service),
+        )
+        api.register_web_resource(
+            "/_synapse/youtube_live_service/stop_broadcast",
+            StopBroadcastResource(api, service),
         )
 
         logger.info("YoutubeLiveServiceModule loaded")
