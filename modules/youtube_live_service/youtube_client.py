@@ -124,21 +124,20 @@ class RealYoutubeClient(YoutubeClient):
     @staticmethod
     def _is_already_ended_error(error) -> bool:
         """
-        True se o erro do Google indica que o broadcast já não está mais ao
-        vivo (encerrado por fora do Element: OBS fechado, YouTube Studio,
-        ou o próprio enableAutoStop), em vez de uma falha real ao tentar
-        encerrar.
+        True se o YouTube recusou encerrar o broadcast por causa do estado em
+        que ele está (reason "invalidTransition"), em vez de uma falha real.
 
-        Confirmado em produção (synapse#20): o reason real da API para esse
-        caso é "invalidTransition" (sem prefixo "error"), não
-        "errorInvalidTransition" como presumido inicialmente:
+        Confirmado contra a API real (synapse#20): 403 "Invalid transition",
+        reason "invalidTransition". A documentação o define apenas como "a
+        transmissão não pode passar do estado atual para o solicitado", então
+        ele cobre tanto "já encerrada" (OBS fechado, YouTube Studio,
+        enableAutoStop) quanto "nunca foi ao ar" (nenhum encoder conectou).
+        Nos dois casos não há nada no ar e limpar o registro local é correto;
+        no segundo, o broadcast permanece no canal em estado pré-live.
 
-            HttpError 403 ... "Invalid transition".
-            [{'reason': 'invalidTransition', 'domain': 'youtube.liveBroadcast', ...}]
-
-        Mantemos os outros reasons como hipóteses razoáveis (mesma família
-        de erro -- transição de estado inválida), mas só o primeiro foi
-        observado de verdade.
+        Qualquer outro erro (cota, permissão, "not found"...) NÃO é tratado
+        como sucesso: sobe como falha e o registro local é mantido. Corpo de
+        erro ilegível também conta como falha.
         """
         try:
             content = json.loads(error.content.decode("utf-8"))
@@ -146,19 +145,10 @@ class RealYoutubeClient(YoutubeClient):
                 e.get("reason", "").lower()
                 for e in content.get("error", {}).get("errors", [])
             }
-            message = str(content.get("error", {}).get("message", "")).lower()
         except Exception:
-            reasons = set()
-            message = str(error).lower()
+            return False
 
-        already_ended_reasons = {
-            "invalidtransition",  # confirmado em produção
-            "livebroadcastnotfound",
-            "redundanttransition",
-        }
-        already_ended_phrases = ("already", "not found", "cannot be transitioned")
-
-        return bool(reasons & already_ended_reasons) or any(p in message for p in already_ended_phrases)
+        return "invalidtransition" in reasons
 
     def _end_broadcast_sync(self, broadcast_id: str) -> None:
         """

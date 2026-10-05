@@ -137,14 +137,17 @@ class TestIsAlreadyEndedError:
         """
         assert self._check(reason="invalidTransition", message="Invalid transition") is True
 
-    def test_broadcast_not_found_reason_is_already_ended(self):
-        assert self._check(reason="liveBroadcastNotFound") is True
+    def test_unconfirmed_not_found_reason_is_not_treated_as_success(self):
+        """Só invalidTransition foi observado na API real; o resto sobe como falha."""
+        assert self._check(reason="liveBroadcastNotFound") is False
 
-    def test_redundant_transition_reason_is_already_ended(self):
-        assert self._check(reason="redundantTransition") is True
+    def test_unconfirmed_redundant_transition_reason_is_not_treated_as_success(self):
+        assert self._check(reason="redundantTransition") is False
 
-    def test_message_mentioning_already_is_already_ended(self):
-        assert self._check(message="The broadcast is already in the complete state.") is True
+    def test_message_text_alone_is_never_enough(self):
+        """Mensagem com "already"/"not found" sem o reason confirmado não vira sucesso."""
+        assert self._check(message="The broadcast is already in the complete state.") is False
+        assert self._check(message="Requested entity was not found.") is False
 
     def test_unrelated_quota_error_is_not_already_ended(self):
         assert self._check(reason="quotaExceeded", message="Quota exceeded") is False
