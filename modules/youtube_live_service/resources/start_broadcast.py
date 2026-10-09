@@ -7,7 +7,7 @@ from synapse.api.errors import SynapseError
 logger = logging.getLogger(__name__)
 
 
-class SetStreamResource(DirectServeJsonResource):
+class StartBroadcastResource(DirectServeJsonResource):
     isLeaf = True
 
     def __init__(self, api, service):
@@ -22,14 +22,12 @@ class SetStreamResource(DirectServeJsonResource):
 
             body = parse_json_object_from_request(request)
             room_id = body.get("room_id")
-            playback_url = body.get("playback_url")
-            provider = body.get("provider", "fixed")  
+            title = body.get("title")
 
-            result = await self.service.set_stream(
+            result = await self.service.start_broadcast(
                 user_id=user_id,
                 room_id=room_id,
-                playback_url=playback_url,
-                provider=provider,  
+                title=title,
             )
 
             return 200, result

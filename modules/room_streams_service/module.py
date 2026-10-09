@@ -24,6 +24,7 @@ class RoomStreamsServiceModule:
             homeserver=homeserver,
             admin_user_id=admin_user_id,
         )
+        api._hs.room_streams_service = service
 
         api.register_web_resource(
             "/_synapse/room_streams_service/get_stream",
@@ -33,5 +34,4 @@ class RoomStreamsServiceModule:
             "/_synapse/room_streams_service/set_stream",
             SetStreamResource(api, service),
         )
-
         logger.info("RoomStreamsServiceModule loaded")
