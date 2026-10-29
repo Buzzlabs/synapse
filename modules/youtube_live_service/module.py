@@ -4,19 +4,9 @@ from .service import YoutubeLiveService
 from .youtube_client import MockYoutubeClient, RealYoutubeClient, UnconfiguredYoutubeClient, YoutubeClient
 from .resources.start_broadcast import StartBroadcastResource
 from .resources.stop_broadcast import StopBroadcastResource
+from modules._common.secret_file import read_secret_file
 
 logger = logging.getLogger(__name__)
-
-
-def _read_secret_file(path: str | None) -> str | None:
-    if not path:
-        return None
-    try:
-        with open(path, "r") as f:
-            return f.read().strip() or None
-    except OSError:
-        logger.exception("YoutubeLiveServiceModule: cannot read secret file: %s", path)
-        return None
 
 
 def build_youtube_client(config: dict, api) -> YoutubeClient:
@@ -28,8 +18,8 @@ def build_youtube_client(config: dict, api) -> YoutubeClient:
         return MockYoutubeClient()
 
     client_id = config.get("youtube_client_id")
-    client_secret = _read_secret_file(config.get("youtube_client_secret_file"))
-    refresh_token = _read_secret_file(config.get("youtube_refresh_token_file"))
+    client_secret = read_secret_file(config.get("youtube_client_secret_file"))
+    refresh_token = read_secret_file(config.get("youtube_refresh_token_file"))
 
     missing = [
         name
