@@ -1,7 +1,5 @@
 # module.py
 import logging
-import time
-import os
 
 from synapse.module_api import ModuleApi
 
@@ -9,6 +7,7 @@ from .service import RoomFeaturesService
 from .resources.get_feature import GetFeatureResource
 from .resources.list_features import ListFeaturesResource
 from .resources.set_feature import SetFeatureResource
+from modules._common.secret_file import read_secret_file
 
 logger = logging.getLogger(__name__)
 
@@ -20,12 +19,7 @@ def _read_admin_token(config: dict):
     """
     admin_token_file = config.get("admin_token_file")
     if admin_token_file:
-        for _ in range(30):  # tenta por ~30s
-            if os.path.exists(admin_token_file):
-                with open(admin_token_file, "r") as f:
-                    return f.read().strip()
-            time.sleep(1)
-        return None
+        return read_secret_file(admin_token_file, wait_seconds=30)  # tenta por ~30s
 
     return config.get("admin_token")
 
