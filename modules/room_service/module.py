@@ -1,7 +1,5 @@
 # module.py
 import logging
-import time
-import os
 
 from synapse.api.errors import SynapseError
 from synapse.module_api import ModuleApi
@@ -18,6 +16,7 @@ from .resources.delete_room import DeleteRoomResource
 from modules.room_service.resources.is_admin import IsAdminResource
 from .resources.invite_space import InviteSpaceResource
 from .resources.space_children import SpaceChildrenResource
+from modules._common.secret_file import read_secret_file
  
 logger = logging.getLogger(__name__)
 
@@ -27,14 +26,7 @@ class RoomServiceModule:
         admin_user_id = config["admin_user_id"]
         admin_token_file = config["admin_token_file"]
 
-        for _ in range(30):  # tenta por ~30s
-            if os.path.exists(admin_token_file):
-                with open(admin_token_file, "r") as f:
-                    admin_token = f.read().strip()
-                break
-            time.sleep(1)
-        else:
-            admin_token = None
+        admin_token = read_secret_file(admin_token_file, wait_seconds=30)  # tenta por ~30s
                     
         homeserver = config["homeserver"]
 
