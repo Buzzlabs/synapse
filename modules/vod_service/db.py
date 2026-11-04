@@ -1,10 +1,10 @@
 def get_vods(txn, room_id: str, limit: int, offset: int):
     txn.execute(
         """
-        SELECT id, stream_id, room_id, title, category_id,
+        SELECT id, vod_id, room_id, title, category_id,
                recording_path, recording_duration_ms,
                started_at, ended_at
-        FROM streams
+        FROM vod_recordings
         WHERE room_id = ?
           AND ended_at IS NOT NULL
         ORDER BY started_at DESC
@@ -19,7 +19,7 @@ def count_vods(txn, room_id: str):
     txn.execute(
         """
         SELECT COUNT(*)
-        FROM streams
+        FROM vod_recordings
         WHERE room_id = ?
           AND ended_at IS NOT NULL
         """,
@@ -32,10 +32,10 @@ def count_vods(txn, room_id: str):
 def get_vod_by_id(txn, stream_id: int):
     txn.execute(
         """
-        SELECT id, stream_id, room_id, title, category_id,
+        SELECT id, vod_id, room_id, title, category_id,
                recording_path, recording_duration_ms,
                started_at, ended_at
-        FROM streams
+        FROM vod_recordings
         WHERE id = ?
         """,
         (stream_id,),
@@ -61,13 +61,13 @@ def insert_vod(
     """
     txn.execute(
         """
-        INSERT INTO streams (
-            stream_id, room_id, title, recording_path,
+        INSERT INTO vod_recordings (
+            vod_id, room_id, title, recording_path,
             recording_duration_ms, started_at, ended_at,
             created_at, updated_at
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        RETURNING id, stream_id, room_id, title, category_id,
+        RETURNING id, vod_id, room_id, title, category_id,
                   recording_path, recording_duration_ms,
                   started_at, ended_at
         """,
