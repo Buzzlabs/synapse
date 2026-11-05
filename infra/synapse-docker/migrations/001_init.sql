@@ -10,15 +10,6 @@ CREATE TABLE public.bundles (
     status text DEFAULT 'draft' NOT NULL
 );
 
-CREATE TABLE public.bundle_rooms (
-    bundle_id uuid NOT NULL,
-    room_id text NOT NULL,
-    PRIMARY KEY (bundle_id, room_id),
-    FOREIGN KEY (bundle_id)
-        REFERENCES public.bundles(bundle_id)
-        ON DELETE CASCADE
-);
-
 CREATE TABLE public.room_business (
     room_id text PRIMARY KEY,
     room_kind text NOT NULL,
@@ -28,6 +19,20 @@ CREATE TABLE public.room_business (
     keyword text UNIQUE,
     created_at int8 NOT NULL
 );
+
+CREATE TABLE public.bundle_rooms (
+    bundle_id uuid NOT NULL,
+    room_id text NOT NULL,
+    PRIMARY KEY (bundle_id, room_id),
+    FOREIGN KEY (bundle_id)
+        REFERENCES public.bundles(bundle_id)
+        ON DELETE CASCADE,
+    FOREIGN KEY (room_id)
+        REFERENCES public.room_business(room_id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX bundle_rooms_room_idx ON public.bundle_rooms (room_id);
 
 CREATE TABLE public.room_features (
     room_id text NOT NULL,
@@ -43,9 +48,9 @@ CREATE TABLE public.room_features (
 
 CREATE INDEX room_features_room_idx ON public.room_features (room_id);
 
-CREATE TABLE public.streams (
+CREATE TABLE public.vod_recordings (
     id                     BIGSERIAL PRIMARY KEY,
-    stream_id              TEXT,
+    vod_id                 TEXT,
     room_id                TEXT NOT NULL,
     title                  TEXT,
     category_id            BIGINT,
@@ -62,8 +67,8 @@ CREATE TABLE public.streams (
         ON DELETE CASCADE
 );
 
-CREATE INDEX streams_room_started_idx ON public.streams (room_id, started_at DESC);
-CREATE INDEX streams_stream_id_idx ON public.streams (stream_id);
+CREATE INDEX vod_recordings_room_started_idx ON public.vod_recordings (room_id, started_at DESC);
+CREATE INDEX vod_recordings_vod_id_idx ON public.vod_recordings (vod_id);
 
 CREATE TABLE public.room_calendars (
     room_id     text NOT NULL,
