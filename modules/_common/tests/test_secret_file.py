@@ -30,6 +30,18 @@ def test_directory_is_none(tmp_path):
     assert read_secret_file(str(tmp_path)) is None
 
 
+def test_permission_denied_is_none(tmp_path, monkeypatch):
+    f = tmp_path / "secret"
+    f.write_text("abc")
+
+    def deny(*args, **kwargs):
+        raise PermissionError(13, "Permission denied", str(f))
+
+    # chmod does not work in CI (the container runs as root), so shadow open()
+    monkeypatch.setattr(secret_file, "open", deny, raising=False)
+    assert read_secret_file(str(f)) is None
+
+
 def test_waits_until_file_appears(tmp_path, monkeypatch):
     f = tmp_path / "secret"
     sleeps = []
