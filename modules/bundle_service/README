@@ -67,8 +67,9 @@ Defines the relationship between bundles and the rooms included in the package.
 ### Characteristics
 
 * composite primary key (`bundle_id`, `room_id`)
-* foreign key referencing `bundles`
-* automatic cleanup using `ON DELETE CASCADE`
+* foreign key referencing `bundles` (`ON DELETE CASCADE`)
+* foreign key referencing `room_business` (`ON DELETE CASCADE`): deleting a room removes it from every bundle; an unknown `room_id` is rejected
+* index `bundle_rooms_room_idx` on `room_id`
 
 ---
 

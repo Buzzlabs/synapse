@@ -159,7 +159,7 @@ There is no CDN in front of Object Storage for now, so objects must be publicly 
 
 ## Notes
 
-- VODs are scoped by `room_id`: each recording belongs to a Matrix room, and the `streams` table has a `room_id` column (FK to `room_business`).
+- VODs are scoped by `room_id`: each recording belongs to a Matrix room, and the `vod_recordings` table has a `room_id` column (FK to `room_business`).
 - Whether the VODs tab is shown for a room is controlled separately, by the `room_features` table (feature `vods`) — not by this module.
 - `create` only registers metadata. Uploading the actual files to Object Storage is the pipeline's responsibility, and must happen before (or alongside) the create call, or playback URLs will 404.
 
@@ -193,9 +193,9 @@ openssl rand -hex 32 > /path/to/vod_service_token.txt
 
 ## Database
 
-The `streams` table needs read **and write** privileges for the Synapse DB user:
+The `vod_recordings` table needs read **and write** privileges for the Synapse DB user:
 
 ```sql
-GRANT SELECT, INSERT, UPDATE, DELETE ON streams TO <synapse_user>;
-GRANT USAGE, SELECT ON SEQUENCE streams_id_seq TO <synapse_user>;
+GRANT SELECT, INSERT, UPDATE, DELETE ON vod_recordings TO <synapse_user>;
+GRANT USAGE, SELECT ON SEQUENCE vod_recordings_id_seq TO <synapse_user>;
 ```
