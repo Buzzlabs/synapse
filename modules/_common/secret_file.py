@@ -14,6 +14,7 @@ def read_secret_file(path: str | None, *, wait_seconds: int = 0) -> str | None:
     vazio ou se nao pode ser lido. So o caminho vai para o log, nunca o conteudo.
     """
     if not path:
+        logger.debug("secret file path not configured")
         return None
 
     for attempt in range(wait_seconds + 1):
@@ -27,7 +28,12 @@ def read_secret_file(path: str | None, *, wait_seconds: int = 0) -> str | None:
 
     try:
         with open(path, "r") as f:
-            return f.read().strip() or None
+            content = f.read().strip()
     except OSError:
         logger.exception("cannot read secret file: %s", path)
         return None
+
+    if not content:
+        logger.warning("secret file is empty: %s", path)
+        return None
+    return content
