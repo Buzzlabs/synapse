@@ -1,6 +1,5 @@
 # module.py
 import logging
-import os
 
 from synapse.module_api import ModuleApi
 
@@ -8,6 +7,7 @@ from .service import ScheduleService
 from .resources.list_events import ListEventsResource
 from .resources.get_calendar import GetCalendarResource
 from .resources.set_calendar import SetCalendarResource
+from modules._common.secret_file import read_secret_file
 
 logger = logging.getLogger(__name__)
 
@@ -16,11 +16,7 @@ def _read_google_api_key(config: dict):
     Le a Google API key de arquivo (preferido) ou direto do config.
     A key fica no servidor e nunca vai para o front.
     """
-    key_file = config.get("google_api_key_file")
-    if key_file and os.path.exists(key_file):
-        with open(key_file, "r") as f:
-            return f.read().strip()
-    return config.get("google_api_key")
+    return read_secret_file(config.get("google_api_key_file")) or config.get("google_api_key")
 
 
 class ScheduleServiceModule:

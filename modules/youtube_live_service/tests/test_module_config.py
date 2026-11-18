@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from modules.youtube_live_service.module import _read_secret_file, build_youtube_client
+from modules.youtube_live_service.module import build_youtube_client
 from modules.youtube_live_service.youtube_client import (
     MockYoutubeClient,
     RealYoutubeClient,
@@ -90,17 +90,3 @@ async def test_unconfigured_client_raises_on_create():
 
     with pytest.raises(YoutubeNotConfiguredError):
         await client.create_broadcast("Minha live")
-
-
-class TestReadSecretFile:
-    def test_directory_does_not_crash_startup(self, tmp_path):
-        # secret montado como diretório: antes abortava o Synapse
-        assert _read_secret_file(str(tmp_path)) is None
-
-    def test_empty_file_is_treated_as_missing(self, tmp_path):
-        f = tmp_path / "empty.txt"
-        f.write_text("  \n")
-        assert _read_secret_file(str(f)) is None
-
-    def test_none_path(self):
-        assert _read_secret_file(None) is None
