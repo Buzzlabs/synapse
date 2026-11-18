@@ -24,7 +24,7 @@ BEGIN
     IF EXISTS (
         SELECT 1 FROM pg_constraint
         WHERE conname = 'streams_room_id_fkey'
-          AND conrelid = 'public.vod_recordings'::regclass
+          AND conrelid = to_regclass('public.vod_recordings')
     ) THEN
         ALTER TABLE public.vod_recordings
             RENAME CONSTRAINT streams_room_id_fkey TO vod_recordings_room_id_fkey;
