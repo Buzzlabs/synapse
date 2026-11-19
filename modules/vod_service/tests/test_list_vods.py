@@ -199,7 +199,7 @@ async def test_get_vod_success():
     assert body["id"] == 1
     assert body["recordingPath"] == "abc123"
 
-    service.get_vod.assert_awaited_once_with(stream_id=1)
+    service.get_vod.assert_awaited_once_with(vod_pk=1)
 
 
 @pytest.mark.asyncio

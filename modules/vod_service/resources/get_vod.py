@@ -14,10 +14,10 @@ class GetVodResource(DirectServeJsonResource):
 
     async def _async_render_POST(self, request):
         content = parse_json_object_from_request(request)
-        stream_id = content.get("stream_id")
+        vod_pk = content.get("stream_id")
 
-        if not stream_id:
+        if not vod_pk:
             raise SynapseError(400, "stream_id is required")
 
-        result = await self.service.get_vod(stream_id=stream_id)
+        result = await self.service.get_vod(vod_pk=vod_pk)
         return 200, result

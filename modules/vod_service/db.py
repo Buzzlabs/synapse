@@ -29,7 +29,7 @@ def count_vods(txn, room_id: str):
     return row[0] if row else 0
 
 
-def get_vod_by_id(txn, stream_id: int):
+def get_vod_by_id(txn, vod_pk: int):
     txn.execute(
         """
         SELECT id, vod_id, room_id, title, category_id,
@@ -38,14 +38,14 @@ def get_vod_by_id(txn, stream_id: int):
         FROM vod_recordings
         WHERE id = ?
         """,
-        (stream_id,),
+        (vod_pk,),
     )
     return txn.fetchone()
 
 
 def insert_vod(
     txn,
-    stream_id: str,
+    vod_id: str,
     room_id: str,
     title,
     recording_path: str,
@@ -72,7 +72,7 @@ def insert_vod(
                   started_at, ended_at
         """,
         (
-            stream_id,
+            vod_id,
             room_id,
             title,
             recording_path,
