@@ -1,8 +1,11 @@
 -- 004_bundle_rooms_room_fk.sql
 --
--- bundle_rooms.room_id nao tinha chave estrangeira: ao apagar uma sala, o
--- vinculo com os pacotes ficava para tras. Agora apaga junto (CASCADE),
--- igual as outras tabelas que dependem de room_business.
+-- bundle_rooms.room_id nao tinha chave estrangeira. A exclusao de sala pela
+-- API ja remove os vinculos (room_service.delete_room chama
+-- remove_room_from_all_bundles), mas em outra transacao: se ela falhar
+-- depois de delete_room_business, sobram vinculos orfaos. A chave garante
+-- que apagar a sala apaga os vinculos junto (CASCADE), por qualquer
+-- caminho, e que um pacote nao aponta para uma sala que nunca existiu.
 --
 -- Falha de proposito se existir linha apontando para sala inexistente:
 -- limpe essas linhas antes de rodar.
