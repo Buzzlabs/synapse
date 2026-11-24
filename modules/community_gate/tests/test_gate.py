@@ -104,6 +104,33 @@ async def test_outro_provider_nao_torna_interno():
     assert await _gate(backend).is_internal(FAN) is False
 
 
+GUEST_STAFF = "@catarina:hs"
+
+
+def _gate_com_internos():
+    return CommunityGate(
+        backend=FakeBackend(),
+        internal_auth_provider=PROVIDER,
+        community_spaces=[COMMUNITY_SPACE],
+        internal_users=[GUEST_STAFF],
+    )
+
+
+@pytest.mark.asyncio
+async def test_usuario_listado_em_internal_users_e_interno():
+    assert await _gate_com_internos().is_internal(GUEST_STAFF) is True
+
+
+@pytest.mark.asyncio
+async def test_internal_users_entra_em_sala_interna():
+    assert await _gate_com_internos().may_join(GUEST_STAFF, INTERNAL_ROOM) is True
+
+
+@pytest.mark.asyncio
+async def test_internal_users_nao_torna_os_outros_internos():
+    assert await _gate_com_internos().is_internal(FAN) is False
+
+
 # ---------------- join ----------------
 
 
