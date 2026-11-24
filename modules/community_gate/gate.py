@@ -28,6 +28,7 @@ class CommunityGate:
         community_spaces,
         internal_space=None,
         community_owners=(),
+        internal_users=(),
     ):
         self.backend = backend
         self.internal_auth_provider = internal_auth_provider
@@ -37,9 +38,14 @@ class CommunityGate:
         # subspaces. Continuam "comunidade" para todo o resto: so entram em
         # sala de comunidade e so convidam interno para sala de comunidade.
         self.community_owners = set(community_owners)
+        # Internos sem conta Google da empresa (ex.: colaboradora com Gmail,
+        # login por senha). Mesmo acesso de quem entra pelo provider interno.
+        self.internal_users = set(internal_users)
 
     async def is_internal(self, user_id):
-        """Interno = admin do servidor ou login pelo provider interno."""
+        """Interno = listado em internal_users, admin ou login pelo provider interno."""
+        if user_id in self.internal_users:
+            return True
         if await self.backend.is_admin(user_id):
             return True
         providers = await self.backend.external_providers(user_id)

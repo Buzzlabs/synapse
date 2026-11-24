@@ -15,8 +15,9 @@ run as the target user. That is what closes the `room_service` shortcuts
 
 A user is **internal** if they are a server admin, or if they have an
 external ID from `internal_auth_provider` (default `oidc-google`, i.e. they
-logged in through the company's Google Workspace SSO). Everyone else is
-**community**.
+logged in through the company's Google Workspace SSO), or if they are listed
+in `internal_users` (staff without a company Google account, who log in with
+a password). Everyone else is **community**.
 
 This only holds while the OIDC client stays restricted to the company's
 domain (Google "Internal" client). Opening that client to any Google account
@@ -99,7 +100,13 @@ modules:
       # optional — community owners who may create rooms and subspaces
       community_owners:
         - "@creator:matrix.example.com"
+      # optional — staff without a company Google account
+      internal_users:
+        - "@contractor:matrix.example.com"
 ```
+
+Staff auto-join of `internal_space` only runs for `internal_auth_provider`
+logins; add `internal_users` to that space by hand (admin join).
 
 Recommended alongside it in `homeserver.yaml`:
 
