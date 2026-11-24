@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import Mock, AsyncMock
 from types import SimpleNamespace
 
+from synapse.api.errors import SynapseError
 from modules.bundle_service.service import BundleService
 
 @pytest.fixture
@@ -34,7 +35,10 @@ async def test_create_bundle_success(service):
     """
 
     service.store.db_pool.runInteraction = AsyncMock(
-        return_value="bundle-123"
+        side_effect=[
+            [("!room1:test", "kw1"), ("!room2:test", "kw2")],
+            "bundle-123",
+        ]
     )
 
     bundle_id = await service.create_bundle(
@@ -46,7 +50,7 @@ async def test_create_bundle_success(service):
 
     assert bundle_id == "bundle-123"
 
-    service.store.db_pool.runInteraction.assert_awaited_once()
+    assert service.store.db_pool.runInteraction.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -86,3 +90,28 @@ async def test_create_bundle_db_error(service):
             created_by="@admin:test",
             rooms=["!room1:test"],
         )
+
+
+@pytest.mark.asyncio
+async def test_create_bundle_unknown_room_returns_400(service):
+    """
+    Sala que nao existe em room_business deve devolver 400 e nao inserir nada.
+    """
+
+    service.store.db_pool.runInteraction = AsyncMock(
+        return_value=[("!room1:test", "kw1")]
+    )
+
+    with pytest.raises(SynapseError) as exc:
+        await service.create_bundle(
+            bundle_name="Music Bundle",
+            price=1000,
+            created_by="@admin:test",
+            rooms=["!room1:test", "!typo:test"],
+        )
+
+    assert exc.value.code == 400
+    assert "!typo:test" in exc.value.msg
+
+    names = [c.args[0] for c in service.store.db_pool.runInteraction.await_args_list]
+    assert "create_bundle" not in names

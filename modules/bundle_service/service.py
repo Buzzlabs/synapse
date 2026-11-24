@@ -120,6 +120,17 @@ class BundleService:
     
 
     # ---------------- CREATE BUNDLES ----------------
+    async def _assert_rooms_exist(self, rooms):
+        if not rooms:
+            return
+
+        rows = await self.store.db_pool.runInteraction(
+            "get_room_business_by_ids", db.get_room_business_by_ids, rooms
+        )
+        unknown = set(rooms) - {row[0] for row in rows}
+        if unknown:
+            raise SynapseError(400, f"Unknown rooms: {', '.join(sorted(unknown))}")
+
     async def create_bundle(self, bundle_name, price, created_by, rooms):
         logger.info(
             "create_bundle: start | name=%s | price=%s | created_by=%s | rooms_count=%d",
@@ -128,6 +139,8 @@ class BundleService:
             created_by,
             len(rooms) if rooms else 0,
         )
+
+        await self._assert_rooms_exist(rooms)
 
         try:
             bundle_id = await self.store.db_pool.runInteraction(
@@ -262,6 +275,7 @@ class BundleService:
             raise SynapseError(403, "Not allowed to update this bundle")
 
         rooms = list(set(rooms or []))
+        await self._assert_rooms_exist(rooms)
 
         try:
             await self.store.db_pool.runInteraction(
