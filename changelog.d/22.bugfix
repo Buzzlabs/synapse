@@ -1,0 +1,1 @@
+Add a foreign key from `bundle_rooms` to `room_business`, rename the `streams` table to `vod_recordings`, and return 400 for unknown rooms in the bundle endpoints.

@@ -441,7 +441,7 @@ async def test_get_vod_not_found():
     service = _make_service_with_row(row=None)
 
     with pytest.raises(SynapseError) as err:
-        await service.get_vod(stream_id=999)
+        await service.get_vod(vod_pk=999)
 
     assert err.value.code == 404
 
@@ -453,7 +453,7 @@ async def test_get_vod_success():
     """
     service = _make_service_with_row(row=_row())
 
-    result = await service.get_vod(stream_id=1)
+    result = await service.get_vod(vod_pk=1)
 
     assert result["id"] == 1
     assert result["recordingPath"] == "abc123"
@@ -468,7 +468,7 @@ async def test_get_vod_passa_id_para_o_banco():
     """
     service = _make_service_with_row(row=_row(row_id=7))
 
-    await service.get_vod(stream_id=7)
+    await service.get_vod(vod_pk=7)
 
     call = service._store_mock.db_pool.runInteraction.await_args
     assert call.args[0] == "get_vod_by_id"
@@ -569,7 +569,7 @@ def test_get_vod_by_id_passa_id():
     """
     txn = _make_txn(fetchone=None)
 
-    db.get_vod_by_id(txn, stream_id=7)
+    db.get_vod_by_id(txn, vod_pk=7)
 
     params = txn.execute.call_args.args[1]
     assert params == (7,)
@@ -581,6 +581,6 @@ def test_get_vod_by_id_retorna_none_quando_nao_existe():
     """
     txn = _make_txn(fetchone=None)
 
-    result = db.get_vod_by_id(txn, stream_id=999)
+    result = db.get_vod_by_id(txn, vod_pk=999)
 
     assert result is None

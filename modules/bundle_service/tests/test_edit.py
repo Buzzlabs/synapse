@@ -30,6 +30,7 @@ async def test_update_bundle_success():
                 "created_by": "@user:localhost",
             }
         ],
+        [("!room1:localhost", "kw1")],
         None
     ])
 
@@ -44,7 +45,7 @@ async def test_update_bundle_success():
     )
 
     assert result["bundle_id"] == "bundle1"
-    assert db_pool.runInteraction.await_count == 2
+    assert db_pool.runInteraction.await_count == 3
 
 
 @pytest.mark.asyncio
@@ -191,3 +192,49 @@ async def test_update_bundle_missing_price():
         )
 
     assert err.value.code == 400
+
+
+@pytest.mark.asyncio
+async def test_update_bundle_unknown_room_returns_400():
+    """
+    Sala que nao existe em room_business deve devolver 400 e nao atualizar nada.
+    """
+
+    api = MagicMock()
+
+    store = MagicMock()
+    db_pool = MagicMock()
+
+    api._hs.get_datastores.return_value.main = store
+    store.db_pool = db_pool
+
+    service = BundleService(api)
+
+    db_pool.runInteraction = AsyncMock(side_effect=[
+        [
+            {
+                "bundle_id": "bundle1",
+                "bundle_name": "Old Bundle",
+                "price": 10,
+                "created_by": "@user:localhost",
+            }
+        ],
+        [("!room1:localhost", "kw1")],
+    ])
+
+    service._is_admin = AsyncMock(return_value=False)
+
+    with pytest.raises(SynapseError) as exc:
+        await service.update_bundle(
+            "@user:localhost",
+            "bundle1",
+            "New Bundle",
+            20,
+            ["!room1:localhost", "!typo:localhost"],
+        )
+
+    assert exc.value.code == 400
+    assert "!typo:localhost" in exc.value.msg
+
+    names = [c.args[0] for c in db_pool.runInteraction.await_args_list]
+    assert "update_bundle" not in names

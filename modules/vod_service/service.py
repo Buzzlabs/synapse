@@ -91,7 +91,7 @@ class VodService:
     def _serialize(self, row) -> dict:
         (
             row_id,
-            stream_id,
+            vod_id,
             room_id,
             title,
             category_id,
@@ -103,7 +103,7 @@ class VodService:
 
         return {
             "id": row_id,
-            "streamId": stream_id,
+            "streamId": vod_id,
             "roomId": room_id,
             "title": title,
             "categoryId": category_id,
@@ -162,13 +162,13 @@ class VodService:
         }
 
     # ---------------- GET ----------------
-    async def get_vod(self, stream_id: int):
-        logger.info("get_vod: stream_id=%s", stream_id)
+    async def get_vod(self, vod_pk: int):
+        logger.info("get_vod: vod_pk=%s", vod_pk)
 
         row = await self.store.db_pool.runInteraction(
             "get_vod_by_id",
             db.get_vod_by_id,
-            stream_id,
+            vod_pk,
         )
 
         if not row:
@@ -206,20 +206,20 @@ class VodService:
             raise SynapseError(400, "recording_path is required")
 
         now_ms = int(time.time() * 1000)
-        # o backend gera o stream_id, o caller nao precisa se preocupar
-        stream_id = f"vod_{uuid.uuid4().hex}"
+        # o backend gera o vod_id, o caller nao precisa se preocupar
+        vod_id = f"vod_{uuid.uuid4().hex}"
 
         logger.info(
-            "create_vod: room_id=%s recording_path=%s stream_id=%s",
+            "create_vod: room_id=%s recording_path=%s vod_id=%s",
             room_id,
             recording_path,
-            stream_id,
+            vod_id,
         )
 
         row = await self.store.db_pool.runInteraction(
             "insert_vod",
             db.insert_vod,
-            stream_id,
+            vod_id,
             room_id,
             title,
             recording_path,
