@@ -1,0 +1,1 @@
+read_secret_file: modules read secrets through one shared helper, and an empty or unreadable secret file now returns `None` and is logged.
